@@ -499,7 +499,7 @@ function instantiateArrayBuffer(binaryFile, imports, receiver) {
 
 function instantiateAsync(binary, binaryFile, imports, callback) {
   binaryFile = binaryFile.includes('glpsol.wasm')
-             ? 'https://raw.githubusercontent.com/DiegoAscanio/jupyterlite/main/content/operations-research/glpsol.wasm'
+             ? 'https://raw.githubusercontent.com/DiegoAscanio/jupyterlite-operations-research/main/content/glpsol/glpsol.wasm'
              : binaryFile
   if (!binary &&
       typeof WebAssembly.instantiateStreaming == 'function' &&
