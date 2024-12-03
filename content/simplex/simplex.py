@@ -17,6 +17,25 @@ def _compute_c_hat_J(π: np.ndarray, A: np.ndarray, c: np.ndarray, J: list) -> n
     c_hat_J = π.dot(A_J) - c[J]
     return c_hat_J
 
+header = '''
+--------------------------------------------------------------------------------
+Solution for:
+
+min cᵀx
+subject to:
+Ax = b
+
+where 
+
+c={c},
+x={x},
+A=
+{A},
+b=
+{b}
+
+'''
+
 def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False) -> tuple[float, np.ndarray, np.ndarray, int, int]:
     """
     Solves the linear programming minimization problem using the simplex method
@@ -46,6 +65,17 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False)
     k = 0
     r = 0
     x_trivial = np.zeros(n)
+
+    if debug:
+        x = np.array([f'x_{i}' for i in range(m)])
+        print(
+            header.format(
+                c = c,
+                x = x,
+                A = A,
+                b = b.reshape((m,1))
+            )
+        )
     
     # start the method
     while not solution_found:
@@ -61,12 +91,16 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False)
         if c_hat_J[k] <= 0:
             solution_found = True
             solution_type = 1
+            to_enter = None
+            to_exit = None
         else: # step 5 - find which variable to leave the basis
             y_k = np.linalg.inv(A_I).dot(A[:, k])
             # step 6 - if all y_k leq 0 then the solution is unbounded
             if np.all(y_k <= 0):
                 solution_found = True
                 solution_type = 3
+                to_enter = J[k]
+                to_exit = None
             else: # step 7 - find the variable to leave the basis through the minimum ratio test for all y_k > 0
                 ratios = np.where(y_k > 0, x_I / y_k, np.inf)
                 r = np.argmin(ratios)
@@ -82,6 +116,8 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False)
         if not np.allclose(A.dot(current_x), b):
             solution_found = True
             solution_type = -1
+            to_enter = None
+            to_exit = None
         
         # print the steps of the simplex method
         if debug:
@@ -93,12 +129,12 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False)
             print(f"x_I = {x_I}")
             print(f"A_I =\n{A_I}")
             print(f"A_I^-1 =\n{np.linalg.inv(A_I)}")
-            print(f"A_J =\n{A[:, J]}")
+            print(f"A_J =\n{A[:, old_J]}")
             print(f"π = {π}")
             print(f"z_0 = {z_0}")
             print(f"c_hat_J = {c_hat_J}")
-            print(f"Variable to enter the basis: x_{I[r]}")
-            print(f"Variable to leave the basis: x_{J[k]}")
+            print(f"Variable to enter the basis: x_{to_enter}")
+            print(f"Variable to leave the basis: x_{to_exit}")
             print()
         # increment the iterations count
         iterations_count += 1
