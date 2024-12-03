@@ -67,7 +67,7 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False)
     x_trivial = np.zeros(n)
 
     if debug:
-        x = np.array([f'x_{i}' for i in range(m)])
+        x = np.array([f'x_{i}' for i in range(n)])
         print(
             header.format(
                 c = c,
