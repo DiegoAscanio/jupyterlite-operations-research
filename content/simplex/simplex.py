@@ -142,6 +142,7 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False)
     # If a solution is found and it is optimal, check for multiple optimal solutions
     if solution_type == 1:
         if np.isclose(c_hat_J, 0).any(): # if some c_hat_J[j] = 0 then there are multiple optimal solutions
+            # this is a failing criteria for the moment, i need to study 
             solution_type = 2
     # Compute the optimal value of the objective function
     x_star = np.copy(x_trivial)
