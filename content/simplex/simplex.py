@@ -15,6 +15,7 @@ def _compute_A_I_x_I_π_and_z_0(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: 
 def _compute_c_hat_J(π: np.ndarray, A: np.ndarray, c: np.ndarray, J: list) -> np.ndarray:
     A_J = A[:, J]
     c_hat_J = π.dot(A_J) - c[J]
+    print('CHATJ', c_hat_J)
     return c_hat_J
 
 header = '''
