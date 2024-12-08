@@ -48,7 +48,7 @@ def _find_k_who_enters(c_hat_J: np.ndarray) -> tuple[np.intp, bool]:
     k: np.intp = np.argmax(c_hat_J)
     return k, c_hat_J[k] > 0
 
-def _find_r_who_leaves(A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.ndarray, debug = False) -> tuple[np.intp, np.ndarray, bool, dict]:
+def _find_r_who_leaves(I: np.ndarray, A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.ndarray, debug = False) -> tuple[np.intp, np.ndarray, bool, dict]:
     """
     Finds the index of the variable that leaves the basis and returns if
     the simplex method shouuld continue. When all elements of A_k are
@@ -68,12 +68,12 @@ def _find_r_who_leaves(A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.ndarray, de
     """
     debug_info = {}
     y_k = A_I_inv.dot(A_k)
-    ratios = x_I / y_k if y_k > 0 else np.inf
+    ratios = np.where(y_k > 0, x_I / y_k, np.inf)
     r = np.argmin(ratios)
     if debug:
         debug_info['y_k'] = y_k
         debug_info['ratios'] = ratios
-        debug_info['r'] = r
+        debug_info['r'] = I[r]
     return r, y_k, y_k[r] > 0, debug_info
 
 def _update_I_and_J(I: np.ndarray, J: np.ndarray, k: np.intp, r: np.intp) -> tuple[np.ndarray, np.ndarray]:
@@ -88,8 +88,10 @@ def _update_I_and_J(I: np.ndarray, J: np.ndarray, k: np.intp, r: np.intp) -> tup
         I: the updated set of indices of the basic variables.
         J: the updated set of indices of the non-basic variables.
     """
-    I[r] = k
-    J[k] = r
+    to_enter = J[k]
+    to_exit = I[r]
+    I[r] = to_enter
+    J[k] = to_exit
     return I, J
 
 def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = False) -> tuple[np.ndarray, np.ndarray, np.ndarray, bool, int, dict]:
@@ -114,7 +116,7 @@ def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I:
     m, n = A.shape
     A_I = _compute_A_I(A, I)
     x_I = _compute_X_I(A_I, b)
-    if x_I >= 0: # The initial basis is already feasible
+    if np.all(x_I > 0): # The initial basis is already feasible
         return I, A_I, A, True, 0, debug_info
     """
     Perform first phase - steps:
@@ -126,9 +128,10 @@ def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I:
     """
     # Create the artificial variables
     x_I_indices_lesser_than_zero = np.where(x_I < 0)[0]
+
     artificial_variables = np.array([
         [1 if i == j else 0 for i in range(m)] for j in x_I_indices_lesser_than_zero
-        ])
+    ]).T
     artificial_variables_indices = np.arange(n, n + len(x_I_indices_lesser_than_zero))
     # Add the artificial variables to the coefficients matrix A
     A_artificial = np.hstack((A, artificial_variables))
@@ -142,7 +145,7 @@ def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I:
     # 2. call the simplex method
     φ_star, x_star, I_star, A_I_star, A, iterations_count, solution_type, first_phase_debug_info = simplex(
             A_artificial, b, c_artificial, I_artificial, debug
-            )
+    )
     feasible = φ_star == 0
     # 3. Update the debug information
     debug_info['first phase'] = first_phase_debug_info
@@ -161,7 +164,9 @@ def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I:
     # Otherwise chose an original non-basic variable to replace the artificial basic variable
     # until there are no artificial variables in the basis or if not possible, to suppress
     # the constraints that contain the artificial basic variables which could not be replaced
+    counter = 1
     while artificial_variables_in_basis:
+        debug_info['first phase'][f'I with artificial variables - {counter:02d}'] = I_star
         # Compute A_I, A_I_inv, x_I, π, and z_0
         A_I, x_I, π, _ = _compute_A_I_x_I_π_and_z_0(A_artificial, b, c_artificial, I_artificial_variables)
         A_I_inv = np.linalg.inv(A_I)
@@ -171,9 +176,10 @@ def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I:
         c_hat_J = _compute_c_hat_J(π, A_artificial, c_artificial, J)
         # Find the variable to enter the basis
         k, _ = _find_k_who_enters(c_hat_J)
+        debug_info['first phase'][f'to enter'] = f'x_{k}'
         # Find the variable to leave the basis
         A_k = A_artificial[:, k]
-        r, can_leave, debug_info[f'trying to make x_{r} to leave'] = _find_r_who_leaves(A_I_inv, x_I, A_k, debug)
+        r, can_leave, debug_info['first phase'][f'trying to make x_{r} to leave'] = _find_r_who_leaves(I, A_I_inv, x_I, A_k, debug)
         if can_leave:
             # if some variable can leave the basis, update I and J
             I_star, J = _update_I_and_J(I_artificial_variables, J, k, r)
@@ -192,7 +198,7 @@ def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I:
             b = np.delete(b, constraint_to_supress)
             # delete the artificial variable from the basis I_artificial_variables and from the I_star
             I_star = np.delete(I_star, np.where(I_star == to_supress))
-
+        counter += 1
         # Update the artificial variables in the basis
         I_artificial_variables = np.intersect1d(I_star, artificial_variables_indices)
         artificial_variables_in_basis = len(I_artificial_variables) > 0
@@ -202,26 +208,27 @@ def _find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I:
     # and return the updated basis
     return I_star, A_I, A, feasible, iterations_count, debug_info
 
-_do_nothing = lambda *args, **kwargs: None
+_do_nothing = lambda n_args: lambda *args, **kwargs: [None for i in range(n_args)]
+_do_not_update_I_J = lambda I, J, k, r: (I, J)
 
 simplex_steps = {
         'initial_basis': _find_feasible_initial_basis,
         'compute_A_I_x_I_π_and_z_0': {
             True: _compute_A_I_x_I_π_and_z_0,
-            False: _do_nothing
-            },
+            False: _do_nothing(4)
+        },
         'compute_A_J': _compute_A_J,
         'compute_c_hat_J': _compute_c_hat_J,
         'find_k_who_enters': _find_k_who_enters,
         'find_r_who_leaves': {
             True: _find_r_who_leaves,
-            False: _do_nothing
-            },
+            False: _do_nothing(4)
+        },
         'update_I_and_J': {
             True: _update_I_and_J,
-            False: _do_nothing
-            }
+            False: _do_not_update_I_J
         }
+}
 
 second_phase_steps = [ 'compute_A_I_x_I_π_and_z_0', 'compute_A_J', 'compute_c_hat_J', 'find_k_who_enters', 'find_r_who_leaves', 'update_I_and_J' ]
 
@@ -254,22 +261,23 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = 
     solution_found = False
     debug_info = {}
     _, n = A.shape
-    J = _compute_J(n, I)
     iterations_count = 0
     # First phase: find a feasible initial basis
     I, A_I, A, feasible, iterations_count, first_phase_debug_info = first_phase(A, b, c, I, debug)
+    J = _compute_J(n, I)
     debug_info['first phase'] = first_phase_debug_info
     if not feasible:
         return 0, np.zeros(A.shape[1]), I, A_I, A, iterations_count, -1, debug_info
     # Second phase: find the optimal solution
     second_phase_debug_info = {}
     while not solution_found:
-        second_phase_debug_info[f'iteration_{iterations_count}'] = {}
+        second_phase_debug_info[f'iteration_{iterations_count:02d}'] = {}
         # instantiate an iterator for second phase at each iteration
         second_phase_steps_iter = iter(second_phase_steps)
-        # 1. Compute A_I, x_I, π, z_0, A_J, c_hat_J
+        # 1. Compute A_I, A_I_inv, x_I, π, z_0, J, A_J, c_hat_J
         step = next(second_phase_steps_iter)
         A_I, x_I, π, z_0 = simplex_steps[step][feasible](A, b, c, I)
+        A_I_inv = np.linalg.inv(A_I)
         # 2. Compute A_J
         step = next(second_phase_steps_iter)
         A_J = simplex_steps[step](A, J)
@@ -281,16 +289,23 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = 
         k, c_hat_k_gt_0 = simplex_steps[step](c_hat_J)
         # Then, I should run the next steps if and only if no solution was found
         solution_found = not c_hat_k_gt_0
+        # otherwise, exit
+        if solution_found:
+            break
         # 3. Find the variable that leaves the basis
         step = next(second_phase_steps_iter)
-        r, y_k, y_k_r_gt_0, second_phase_debug_info[f'iteration_{iterations_count}'][f'trying to make x_{r} to leave'] = simplex_steps[step][not solution_found](A_I, x_I, A_J[:, k], debug)
+        r, y_k, y_k_r_gt_0, second_phase_debug_info[f'iteration_{iterations_count:02}'][f'trying to make x_{I[r]} to leave'] = simplex_steps[step][not solution_found](I, A_I_inv, x_I, A_J[:, k], debug)
         solution_found = not y_k_r_gt_0
+        # otherwise, exit
+        if solution_found:
+            break
         # 4. Update I and J
         step = next(second_phase_steps_iter)
-        I, J = simplex_steps[step][not solution_found](I, J, k, r)
+        I, J = simplex_steps[step][not solution_found](np.copy(I), np.copy(J), k, r)
         # 5. Update the debug information
-        second_phase_debug_info[f'iteration_{iterations_count:02d}'] += {
+        second_phase_debug_info[f'iteration_{iterations_count:02d}']['general state'] = {
                 'A_I': A_I,
+                'A_I_Inv': np.linalg.inv(A_I),
                 'x_I': x_I,
                 'π': π,
                 'z_0': z_0,
@@ -298,14 +313,18 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = 
                 'c_hat_J': c_hat_J,
                 'k': k,
                 'r': r,
-                'y_k': y_k
+                'y_k': y_k,
+                'I': I,
+                'J': J
         }
         # 6. Update the number of iterations
         iterations_count += 1
+    # update the debug info
+    debug_info['second phase']=second_phase_debug_info
     # Evaluate the solution
     if np.any(np.isclose(c_hat_J, 0)):
         solution_type = 2 # multiple optimal solutions
-    elif y_k < 0:
+    elif np.all(A_I_inv.dot(A_J[:, k]) < 0): # as y_k = A_I_inv.dot(A_J[:, k])
         solution_type = 3 # unbounded solution
     else:
         solution_type = 1 # optimal finite solution
