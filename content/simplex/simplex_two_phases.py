@@ -301,12 +301,12 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     debug_info['title'] = 'Simplex method with feasible initial basis for granted'
     _, n = A.shape
     iterations_count = 0
+    J = _compute_J(n, I)
     # Perform the simplex method
     while not solution_found:
         # 1. Compute A_I, A_I_inv, J, A_J, x_I, π, and z_0
         A_I, x_I, π, z_0 = _compute_A_I_x_I_π_and_z_0(A, b, c, I)
         A_I_inv = np.linalg.inv(A_I)
-        J = _compute_J(n, I)
         A_J = _compute_A_J(A, J)
         old_I, old_J = deepcopy(I), deepcopy(J)
         # 2. Compute c_hat_J
@@ -351,6 +351,27 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         }
         # 7. Increment the iterations count
         iterations_count += 1
+
+    # 8. Append debug information for all values computed in the last iteration
+    h = f'debug_info_iteration_{iterations_count:02d}'
+    debug_info[h] = {
+        'A_I': A_I,
+        'A_I_inv': A_I_inv,
+        'J': J,
+        'A_J': A_J,
+        'x_I': x_I,
+        'π': π,
+        'z_0': z_0,
+        'c_hat_J': c_hat_J,
+        'k': k,
+        'r': r,
+        'debug_info_from_r_who_leaves': debug_info_from_r_who_leaves,
+        'y_k': y_k,
+        'previous I': old_I,
+        'previous J': old_J,
+        'computed I': I,
+        'computed J': J,
+    }
     # Assuming that this method takes a feasible initial I basis for granted,
     # it can only returns solution of types 1, 2, or 3. Now we should return
     # the expected values
