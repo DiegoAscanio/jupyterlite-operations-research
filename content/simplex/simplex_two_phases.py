@@ -2,6 +2,11 @@ from types import SimpleNamespace
 import numpy as np
 from copy import deepcopy
 
+def _compute_x_from_x_I(n, I, x_I):
+    x = np.zeros(n)
+    x[I] = x_I
+    return x
+
 def _compute_A_I(A: np.ndarray, I: list) -> np.ndarray:
     A_I = A[:, I]
     return A_I
@@ -337,6 +342,7 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
             'J': J,
             'A_J': A_J,
             'x_I': x_I,
+            'x': _compute_x_from_x_I(n, I, x_I),
             'π': π,
             'z_0': z_0,
             'c_hat_J': c_hat_J,
@@ -360,6 +366,7 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         'J': J,
         'A_J': A_J,
         'x_I': x_I,
+        'x': _compute_x_from_x_I(n, I, x_I),
         'π': π,
         'z_0': z_0,
         'c_hat_J': c_hat_J,
