@@ -397,3 +397,24 @@ def markdown_repr_T(tableau_steps) -> str:
             tableau_steps[iteration]['I']
         )
     return markdown
+
+def simplex(A : np.ndarray, B : np.ndarray, C : np.ndarray, I : list) -> Dict:
+    '''
+        This function solves the linear programming problem
+        min cx subject to Ax = b, x >= 0
+        using the simplex method through tableau method, assuming
+        that the initial basis is feasible as well as the problem
+        Arguments:
+            A : np.ndarray : m x n matrix
+            B : np.ndarray : m x 1 matrix
+            C : np.ndarray : 1 x n matrix
+            I : list : List of indices of the initial basis
+        Returns:
+            Solution : Dict : Dictionary containing the
+            optimal solution, the optimal value, the
+            optimal basis, the solution type  and the tableau
+            at each iteration step.
+    '''
+    solution = simplex_tableau(A, B, C, I)
+    return solution
+
