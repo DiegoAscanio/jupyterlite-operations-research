@@ -149,7 +149,7 @@ def _apply_pivot(T: np.ndarray, r: np.intp, k: np.intp) -> Tuple[np.ndarray, dic
         'column_pivot_operations': column_pivot_operations
     }
 
-def _evaluate_c_hat_k(c_hat_k: np.float64) -> Tuple[np.bool, Literal[1, 2] | None]:
+def _evaluate_c_hat_k(c_hat_k: np.float64) -> Tuple[np.bool_, Literal[1, 2] | None]:
     '''
         This functions evaluates the value of the cost vector at the
         entering variable. If the value is positive, it means that the
@@ -169,7 +169,7 @@ def _evaluate_c_hat_k(c_hat_k: np.float64) -> Tuple[np.bool, Literal[1, 2] | Non
     solution_type = None if proceed else 1 if c_hat_k < 0 else 2
     return proceed, solution_type
 
-def _evaluate_y_k(y_k: np.ndarray) -> Tuple[np.bool, Literal[3] | None]:
+def _evaluate_y_k(y_k: np.ndarray) -> Tuple[np.bool_, Literal[3] | None]:
     '''
         This function evaluates the values of the entering variable in the
         tableau. If all values are negative, it means that the problem is
