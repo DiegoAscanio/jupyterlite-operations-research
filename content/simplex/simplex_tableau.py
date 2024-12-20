@@ -333,18 +333,18 @@ def _repr_row_pivot_operations(row_pivot_operations: tuple, labels: list) -> str
     if row_pivot_operations is None:
         return ''
     r, pivot_row_multiplier = row_pivot_operations
-    return f'\\\\\\\\(R_{{{labels[r]}}} = \\\\frac{{R_{{{labels[r]}}}}}{{{pivot_row_multiplier}}}\\\\\\\\)'
+    return f'\\\\(R_{{{labels[r]}}} = \\\\frac{{R_{{{labels[r]}}}}}{{{pivot_row_multiplier}}}\\\\)'
 
 def _repr_column_pivot_operations(column_pivot_operations: list, labels : list) -> list:
     column_pivot_operations_list = []
     for i, pivot_column_multiplier, r in column_pivot_operations:
         if pivot_column_multiplier >= 0:
             column_pivot_operations_list.append(
-                f'\\\\\\\\(R_{{{labels[i]}}} = R_{{{labels[i]}}} - {pivot_column_multiplier}R_{{{labels[r]}}}\\\\\\\\)'
+                f'\\\\(R_{{{labels[i]}}} = R_{{{labels[i]}}} - {pivot_column_multiplier}R_{{{labels[r]}}}\\\\)'
             )
         else:
             column_pivot_operations_list.append(
-                f'\\\\\\\\(R_{{{labels[i]}}} = R_{{{labels[i]}}} + {-pivot_column_multiplier}R_{{{labels[r]}}}\\\\\\\\)'
+                f'\\\\(R_{{{labels[i]}}} = R_{{{labels[i]}}} + {-pivot_column_multiplier}R_{{{labels[r]}}}\\\\)'
             )
     return column_pivot_operations_list
 
@@ -353,8 +353,8 @@ def _markdown_pivot_operations(to_enter, to_leave, I: list, pivot_operations: di
         f'X_{i}' for i in I
     ]
     pivot_operations_str  = '### Pivot Operations\n\n'
-    pivot_operations_str += 'Variable to enter: \\\\\\\\(' + (to_enter or '') + '\\\\\\\\)\n'
-    pivot_operations_str += 'Variable to leave: \\\\\\\\(' + (to_leave or '') + '\\\\\\\\)\n'
+    pivot_operations_str += 'Variable to enter: \\\\(' + (to_enter or '') + '\\\\)\n'
+    pivot_operations_str += 'Variable to leave: \\\\(' + (to_leave or '') + '\\\\)\n'
     pivot_operations_str += '#### Row Operations:\n\n'
     pivot_operations_str += '1. ' + _repr_row_pivot_operations(pivot_operations['row_pivot_operations'], labels) + '\n'
     for i, column_pivot_operation in enumerate(_repr_column_pivot_operations(pivot_operations['column_pivot_operations'], labels)):
@@ -362,10 +362,10 @@ def _markdown_pivot_operations(to_enter, to_leave, I: list, pivot_operations: di
     return pivot_operations_str
 
 def _markdown_T(T: np.ndarray, I: list) -> str:
-    table_header = '|   |' + ' | '.join([f'\\\\\\\\(X_{i}\\\\\\\\)' for i in range(T.shape[1] - 1)]) + ' | RHS |\n'
+    table_header = '|   |' + ' | '.join([f'\\\\(X_{i}\\\\)' for i in range(T.shape[1] - 1)]) + ' | RHS |\n'
     table_header += '|---|' + '---|' * (T.shape[1] - 1) + '---|\n'
 
-    row_names = ['Cost'] + [f'\\\\\\\\(X_{i}\\\\\\\\)' for i in I]
+    row_names = ['Cost'] + [f'\\\\(X_{i}\\\\)' for i in I]
 
     table_body = ''
     for i, row in enumerate(T):
