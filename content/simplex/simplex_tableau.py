@@ -333,7 +333,7 @@ def _repr_row_pivot_operations(row_pivot_operations: tuple, labels: list) -> str
     if row_pivot_operations is None:
         return ''
     r, pivot_row_multiplier = row_pivot_operations
-    return f'\\\\(R_{{{labels[r]}}} = \\\\frac{{R_{{{labels[r]}}}}}{{{pivot_row_multiplier}}}\\\\)'
+    return f'\\\\(R_{{{labels[r]}}} = \\frac{{R_{{{labels[r]}}}}}{{{pivot_row_multiplier}}}\\\\)'
 
 def _repr_column_pivot_operations(column_pivot_operations: list, labels : list) -> list:
     column_pivot_operations_list = []
