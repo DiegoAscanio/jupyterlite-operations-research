@@ -323,7 +323,7 @@ def simplex_tableau(
     solution = {
         'solution_type': solution_type,
         'Z_star': T[0, -1],
-        'X_star': T[0, :-1],
+        'X_star': T[1:, -1],
         'I_star': I,
         'tableaus': tableau_steps
     }
