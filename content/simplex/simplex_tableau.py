@@ -207,7 +207,7 @@ def _evaluate_c_hat_k(c_hat_k: np.float64) -> Tuple[np.bool_, Literal[1, 2] | No
             continue or not
             solution_type : int : Type of solution
     '''
-    proceed  = c_hat_k > 0
+    proceed  = np.round(c_hat_k, decimals=5) > 0
     solution_type = None if proceed else 1 if c_hat_k < 0 else 2
     return proceed, solution_type
 
@@ -277,7 +277,7 @@ def simplex_tableau(
     C : np.ndarray,
     I : list,
     T = None,
-    max_iter = 10
+    max_iter = 1000
     ) -> Dict:
     '''
         This function solves the linear programming problem
@@ -358,8 +358,8 @@ def simplex_tableau(
                 'previous_J': deepcopy(previous_J),
                 'I': deepcopy(I),
                 'J': deepcopy(J),
-                'to_enter': f'X_{k}',
-                'to_leave': f'X_{r}',
+                'to_enter': f'X_{{{k}}}',
+                'to_leave': f'X_{{{r}}}',
                 'c_hat_j': np.copy(T[0, :-1]),
                 'c_hat_k': np.max(T[0, :-1]),
                 'y_k': np.copy(y_k),
@@ -382,24 +382,24 @@ def _repr_row_pivot_operations(row_pivot_operations: tuple, labels: list) -> str
     if row_pivot_operations is None:
         return ''
     r, pivot_row_multiplier = row_pivot_operations
-    return f'\\\\(R_{{{labels[r]}}} = \\frac{{R_{{{labels[r]}}}}}{{{pivot_row_multiplier}}}\\\\)'
+    return f'\\\\(R_{{{labels[r]}}} \\leftarrow \\frac{{R_{{{labels[r]}}}}}{{{pivot_row_multiplier}}}\\\\)'
 
 def _repr_column_pivot_operations(column_pivot_operations: list, labels : list) -> list:
     column_pivot_operations_list = []
     for i, pivot_column_multiplier, r in column_pivot_operations:
         if pivot_column_multiplier >= 0:
             column_pivot_operations_list.append(
-                f'\\\\(R_{{{labels[i]}}} = R_{{{labels[i]}}} - {pivot_column_multiplier}R_{{{labels[r + 1]}}}\\\\)'
+                f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} - {pivot_column_multiplier}R_{{{labels[r + 1]}}}\\\\)'
             )
         else:
             column_pivot_operations_list.append(
-                f'\\\\(R_{{{labels[i]}}} = R_{{{labels[i]}}} + {-pivot_column_multiplier}R_{{{labels[r + 1]}}}\\\\)'
+                f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} + {-pivot_column_multiplier}R_{{{labels[r + 1]}}}\\\\)'
             )
     return column_pivot_operations_list
 
 def _markdown_pivot_operations(to_enter, to_leave, I: list, pivot_operations: dict) -> str:
     labels = ['C'] + [
-        f'X_{i}' for i in I
+        f'X_{{{i}}}' for i in I
     ]
     pivot_operations_str  = '### Pivot Operations\n\n'
     pivot_operations_str += 'Variable to enter: \\\\(' + (to_enter or '') + '\\\\)\n'
@@ -411,10 +411,10 @@ def _markdown_pivot_operations(to_enter, to_leave, I: list, pivot_operations: di
     return pivot_operations_str
 
 def _markdown_T(T: np.ndarray, I: list) -> str:
-    table_header = '|   |' + ' | '.join([f'\\\\(X_{i}\\\\)' for i in range(T.shape[1] - 1)]) + ' | RHS |\n'
+    table_header = '|   |' + ' | '.join([f'\\\\(X_{{{i}}}\\\\)' for i in range(T.shape[1] - 1)]) + ' | RHS |\n'
     table_header += '|---|' + '---|' * (T.shape[1] - 1) + '---|\n'
 
-    row_names = ['Cost'] + [f'\\\\(X_{i}\\\\)' for i in I]
+    row_names = ['Cost'] + [f'\\\\(X_{{{i}}}\\\\)' for i in I]
 
     table_body = ''
     for i, row in enumerate(T):
@@ -447,7 +447,7 @@ def markdown_repr_T(tableau_steps) -> str:
         )
     return markdown
 
-def simplex(A : np.ndarray, B : np.ndarray, C : np.ndarray, I : list, T = None, max_iter = 10) -> Dict:
+def simplex(A : np.ndarray, B : np.ndarray, C : np.ndarray, I : list, T = None, max_iter = 1000) -> Dict:
     '''
         This function solves the linear programming problem
         min cx subject to Ax = b, x >= 0

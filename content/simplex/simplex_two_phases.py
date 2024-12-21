@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 import numpy as np
 from copy import deepcopy
+import pdb
 
 def _compute_x_from_x_I(n, I, x_I):
     x = np.zeros(n)
@@ -61,6 +62,7 @@ def _find_r_who_leaves(I: list, A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.nd
     non-positive, the method found an unbounded solution and, therefore,
     should stop.
     Args:
+        I: list of basic variables
         A_I_inv: the inverse of the matrix of the basic variables.
         x_I: the vector of the basic variables.
         A_k: the vector of the coefficients of the entering variable.
@@ -116,8 +118,8 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
     """
     I = deepcopy(I)
     J = deepcopy(J)
-    to_enter = J[k]
-    to_exit = I[r]
+    to_enter = deepcopy(J[k])
+    to_exit = deepcopy(I[r])
     I[r] = to_enter
     J[k] = to_exit
     return I, J
@@ -223,22 +225,24 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     # until there are no artificial variables in the basis or if not possible, to suppress
     # the constraints that contain the artificial basic variables which could not be replaced
     counter = 1
+    # Compute J for the original non-basic variables
+    J = _compute_J(n, I)
     while artificial_variables_in_basis:
         # Compute A_I, A_I_inv, x_I, π, and z_0
         A_I, x_I, π, _ = _compute_A_I_x_I_π_and_z_0(A_artificial, b, c_artificial, I_star)
         A_I_inv = np.linalg.inv(A_I)
-        # Compute J for the original non-basic variables
-        J = _compute_J(n, I)
         # Compute c_hat_J
         c_hat_J = _compute_c_hat_J(π, A_artificial, c_artificial, J)
         # Find the variable to enter the basis
         k, _ = _find_k_who_enters(c_hat_J)
         # Find the variable to leave the basis
         A_k = A_artificial[:, k]
-        r, _, can_leave, debug_info_from_r_who_leaves = _find_r_who_leaves(I_restricted_to_artificial_variables_in_I, A_I_inv, x_I, A_k, debug, I_restricted_to_artificial_variables_in_I)
+        r, _, can_leave, debug_info_from_r_who_leaves = _find_r_who_leaves(I_star, A_I_inv, x_I, A_k, debug, I_restricted_to_artificial_variables_in_I)
         if can_leave:
             # if some variable can leave the basis, update I and J
+            print(I_star, J, J[k], I_star[r], sep=' | ')
             I_star, J = _update_I_and_J(I_star, J, k, r)
+            print(I_star, J)
         else:
             # If no variable can leave, we are considering the ratio x_I / y_k to be infinite
             # so we can suppress the constraint that contains one of the artificial basic variables
@@ -301,13 +305,19 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     c = np.copy(c)
     I = deepcopy(I)
     # Initialize auxiliary variables
+    k = None
+    r = None
+    y_k = None
+    old_I = None
+    old_J = None
+    debug_info_from_r_who_leaves = None
     solution_found = False
     debug_info = {}
     debug_info['title'] = 'Simplex method with feasible initial basis for granted'
     _, n = A.shape
     iterations_count = 0
-    J = _compute_J(n, I)
     # Perform the simplex method
+    J = _compute_J(n, I)
     while not solution_found:
         # 1. Compute A_I, A_I_inv, J, A_J, x_I, π, and z_0
         A_I, x_I, π, z_0 = _compute_A_I_x_I_π_and_z_0(A, b, c, I)
