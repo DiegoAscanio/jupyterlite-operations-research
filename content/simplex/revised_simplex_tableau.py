@@ -10,7 +10,7 @@ def _initialization_step(
     I: list
 ) -> np.ndarray:
     # variables
-    m, n = A.shape
+    m, _ = A.shape
     A_I = A[:, I]
     A_I_inv = np.linalg.inv(A_I)
     C_I = C[I]
@@ -174,18 +174,18 @@ def _repr_row_pivot_operations(row_pivot_operations: tuple, labels: list, I : li
     if row_pivot_operations is None:
         return ''
     r, pivot_row_multiplier = row_pivot_operations
-    return f'\\\\(R_{{{labels[I.index(r) + 1]}}} \\leftarrow \\frac{{R_{{{labels[I.index(r) + 1]}}}}}{{{pivot_row_multiplier}}}\\\\)'
+    return f'\\\\(R_{{{labels[I.index(r) + 1]}}} \\leftarrow \\frac{{R_{{{labels[I.index(r) + 1]}}}}}{{{pivot_row_multiplier:.3f}}}\\\\)'
 
 def _repr_column_pivot_operations(column_pivot_operations: list, labels : list, I : list) -> list:
     column_pivot_operations_list = []
     for i, pivot_column_multiplier, r in column_pivot_operations:
         if pivot_column_multiplier >= 0:
             column_pivot_operations_list.append(
-                f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} - {pivot_column_multiplier}R_{{{labels[I.index(r) + 1]}}}\\\\)'
+                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} - {pivot_column_multiplier:.3f}R_{{{labels[I.index(r) + 1]}}}\\\\)'
             )
         else:
             column_pivot_operations_list.append(
-                f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} + {-pivot_column_multiplier}R_{{{labels[I.index(r) + 1]}}}\\\\)'
+                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} + {-pivot_column_multiplier:.3f}R_{{{labels[I.index(r) + 1]}}}\\\\)'
             )
     return column_pivot_operations_list
 
