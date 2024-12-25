@@ -41,13 +41,13 @@ def _update_I_and_J(I : list, J : list, k : np.intp, r: np.intp) -> Tuple[list, 
 
 def _find_k_to_enter(w : np.ndarray, A : np.ndarray, C : np.ndarray, J : list) -> Tuple[np.intp, np.float64, np.ndarray]:
     c_hat_J = w @ A[:, J] - C[J]
-    k = np.argmax(c_hat_J)
+    k = np.argmax(c_hat_J) # by the bland's rule, argmax prevents cycling
     c_hat_k = c_hat_J[k]
     return k, c_hat_k, c_hat_J
 
 def _find_r_to_leave(B_prime: np.ndarray, y_k: np.ndarray) -> Tuple[np.intp, np.ndarray]:
     ratios = np.where(y_k > 0, B_prime / y_k, np.inf)
-    return np.argmin(ratios), ratios
+    return np.argmin(ratios), ratios # by the bland's rule, argmin prevents cycling
 
 def _row_operation(T_prime: np.ndarray, r: np.intp, I : list) -> Tuple[np.ndarray, tuple]:
     pivot = T_prime[r, -1]
@@ -80,9 +80,19 @@ def _revised_pivot(T_prime: np.ndarray, k : np.intp, r : np.intp, I: list, J: li
     }
     return T_prime, I, J, pivot_operations
 
+def _build_X_I(A_I_inv: np.ndarray, B : np.ndarray) -> np.ndarray:
+    return A_I_inv @ B
+
+def _build_X(A: np.ndarray, A_I_inv: np.ndarray, B: np.ndarray, I: list) -> np.ndarray:
+    _, n = A.shape
+    x = np.zeros(n)
+    x[I] = _build_X_I(A_I_inv, B)
+    return x
+
 def _main_step(
     T: np.ndarray,
     A: np.ndarray,
+    B: np.ndarray,
     C: np.ndarray,
     I: list,
     J: list
@@ -94,12 +104,14 @@ def _main_step(
     step_operations['J'] = J.copy()
     step_operations['previous_T'] = np.copy(T)
     A_I_inv = T[1:, :-1]
+    step_operations['A_I_inv'] = A_I_inv
 
     # 1. Find k to enter
     w = T[0, :-1]
     k, c_hat_k, c_hat_J = _find_k_to_enter(w, A, C, J)
-    y_k = A_I_inv @ A[:, k]
+    y_k = A_I_inv @ A[:, J[k]]
     step_operations['k'] = k
+    step_operations['J[k]'] = J[k]
     step_operations['c_hat_k'] = c_hat_k
     step_operations['c_hat_J'] = c_hat_J
     step_operations['y_k'] = y_k
@@ -113,7 +125,7 @@ def _main_step(
     step_operations['ratios'] = ratios
 
     # 3. Optimality checks
-    step_operations['solution_type'] = 3 if np.all(y_k <= 0) else 2 if c_hat_k == 0 else 1 if c_hat_k < 0 else None
+    step_operations['solution_type'] = 1 if c_hat_k < 0 else 2 if c_hat_k == 0 else 3 if np.all(y_k <= 0) else None
     # proceed if and only if we're not at an optimal solution
     proceed = step_operations['solution_type'] is None
 
@@ -131,6 +143,8 @@ def _main_step(
         step_operations['pivot_operations'] = pivot_operations
         # 4.3 Update T
         T = T_prime[:, :-1]
+    step_operations['X_I'] = _build_X_I(A_I_inv, B)
+    step_operations['X'] = _build_X(A, A_I_inv, B, I)
     step_operations['T'] = np.copy(T)
     step_operations['proceed'] = proceed
     return step_operations, proceed
@@ -155,7 +169,7 @@ def revised_simplex_tableau(
 
     # 2. then the main steps
     while proceed:
-        step_operations, proceed = _main_step(T, A, C, I, J)
+        step_operations, proceed = _main_step(T, A, B, C, I, J)
         revised_tableau_steps[iterations] = step_operations
         iterations += 1
         proceed = proceed and iterations < max_iter
