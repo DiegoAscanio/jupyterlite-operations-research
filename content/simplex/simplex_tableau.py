@@ -6,7 +6,7 @@
     It is also assumed that the initial basis is feasible.
 '''
 
-from typing import Dict, Tuple, Literal
+from typing import Any, Dict, Tuple, Literal
 from copy import deepcopy
 import numpy as np
 
@@ -228,7 +228,7 @@ def _evaluate_y_k(y_k: np.ndarray) -> Tuple[np.bool_, Literal[3] | None]:
     solution_type = None if proceed else 3
     return proceed, solution_type
 
-def _evaluate_solution_by_c_hat_k_and_y_k(c_hat_k: np.float64, y_k: np.ndarray) -> int:
+def _evaluate_solution_by_c_hat_k_and_y_k(c_hat_k: np.float64, y_k: np.ndarray) -> Any:
     '''
         This function evaluates the solution by the values of the cost vector
         at the entering variable and the values of the entering variable in the
@@ -244,12 +244,9 @@ def _evaluate_solution_by_c_hat_k_and_y_k(c_hat_k: np.float64, y_k: np.ndarray) 
         Returns:
             solution_type : int : Type of solution
     '''
-    _, solution_type_hat_k = _evaluate_c_hat_k(c_hat_k)
+    _, solution_type_c_hat_k = _evaluate_c_hat_k(c_hat_k)
     _, solution_type_y_k = _evaluate_y_k(y_k)
-    return max(
-        solution_type_hat_k or 0,
-        solution_type_y_k or 0
-    )
+    return solution_type_c_hat_k or solution_type_y_k
 
 def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, list]:
     """
