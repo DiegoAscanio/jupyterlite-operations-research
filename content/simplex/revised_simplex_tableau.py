@@ -40,7 +40,7 @@ def _update_I_and_J(I : list, J : list, k : np.intp, r: np.intp) -> Tuple[list, 
     return I_new, J_new
 
 def _find_k_to_enter(w : np.ndarray, A : np.ndarray, C : np.ndarray, J : list) -> Tuple[np.intp, np.float64, np.ndarray]:
-    c_hat_J = w @ A[:, J] - C[J]
+    c_hat_J = np.round(w @ A[:, J] - C[J], 6) # rounding to ensure that the first max will be the selected one
     k = np.argmax(c_hat_J) # by the bland's rule, argmax prevents cycling
     c_hat_k = c_hat_J[k]
     return k, c_hat_k, c_hat_J
