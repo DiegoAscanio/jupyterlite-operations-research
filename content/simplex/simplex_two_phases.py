@@ -131,6 +131,8 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         I: the set of indices of the basic variables.
         A_I: the coefficients matrix of the basic variables.
         A: the coefficients matrix of the constraints after the first phase.
+        b: the vector of the right-hand side of the constraints after the first phase.
+        c: the vector of coefficients of the objective function after the first phase.
         feasible: a boolean indicating if the original problem is feasible.
         iterations_count: the number of iterations needed to find a feasible basis.
         debug_info: a dictionary with debug information.
