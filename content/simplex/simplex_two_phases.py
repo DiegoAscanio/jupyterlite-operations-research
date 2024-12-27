@@ -109,28 +109,12 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
         I: the updated set of indices of the basic variables.
         J: the updated set of indices of the non-basic variables.
     """
-    print(f'''
-    k: {k}
-    J[k]: {J[k]}
-    r: {r}
-    I[r]: {I[r]}
-    Before J: {J}
-    Before I: {I}
-    ''')
     I = deepcopy(I)
     J = deepcopy(J)
     to_enter = deepcopy(J[k])
     to_exit = deepcopy(I[r])
     I[r] = to_enter
     J[k] = to_exit
-    print(f'''
-    k: {k}
-    J[k]: {J[k]}
-    r: {r}
-    I[r]: {I[r]}
-    After J: {J}
-    After I: {I}
-    ''')
     return I, J
 
 def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, bool, int, dict]:
@@ -275,17 +259,6 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
             k, _ = _find_k_who_enters(aux_c_hat_J)
             # we then check if it is possible to pivot the artificial variable
             # column with the k-th non-basic variable column
-            print(f'''
-            Inside job:
-            J = {aux_J}
-            c_hat_J = {aux_c_hat_J}
-            k = {k}
-            r = {r}
-            J[k] = {aux_J[k]}
-            I[r] (to leave) = {aux_I[r]}
-            A_artificial[r] = {A_artificial[r]}
-            A_artificial[r, J[k]] = {A_artificial[r, aux_J[k]]}
-            ''')
             if A_artificial[r, aux_J[k]] == 0:
                 # if it is not possible, we'll remove k from the non-basic variables
                 # and try again
@@ -377,11 +350,6 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         else: # otherwise, we should pivot k and r variables
             # 6. update I and J
             I_to_clean, J = _update_I_and_J(I_to_clean, J, k, r)
-            print(f'''
-            After updates:
-            I = {I_to_clean}
-            J = {J}
-            ''')
             # 7. remove artificial variables from J
             J = list(set(J) - set(artificial_variables_indices))
         # 8.1 update the artificial variables indices
