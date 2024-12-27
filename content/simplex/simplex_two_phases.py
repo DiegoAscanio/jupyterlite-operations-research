@@ -109,12 +109,28 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
         I: the updated set of indices of the basic variables.
         J: the updated set of indices of the non-basic variables.
     """
+    print(f'''
+    k: {k}
+    J[k]: {J[k]}
+    r: {r}
+    I[r]: {I[r]}
+    Before J: {J}
+    Before I: {I}
+    ''')
     I = deepcopy(I)
     J = deepcopy(J)
     to_enter = deepcopy(J[k])
     to_exit = deepcopy(I[r])
     I[r] = to_enter
     J[k] = to_exit
+    print(f'''
+    k: {k}
+    J[k]: {J[k]}
+    r: {r}
+    I[r]: {I[r]}
+    After J: {J}
+    After I: {I}
+    ''')
     return I, J
 
 def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, bool, int, dict]:
@@ -241,7 +257,7 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         I: list,
         J: list,
         c_hat_J: np.ndarray,
-        r: np.intp
+        r: np.intp,
     ) -> np.intp | None:
         # Here we want to force the selection of a non-basic variable to replace
         # an artificial variable in the basis, even if it worsens the objective
@@ -251,7 +267,7 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         aux_J = J.copy()
         aux_c_hat_J = np.copy(c_hat_J)
         k = None
-        proceed = True
+        proceed = len(aux_J) > 0
         valid_non_basic_variable_found = False
         while proceed:
             # we try first to find a non-basic variable to enter with the best
@@ -259,7 +275,18 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
             k, _ = _find_k_who_enters(aux_c_hat_J)
             # we then check if it is possible to pivot the artificial variable
             # column with the k-th non-basic variable column
-            if A_artificial[r, k] == 0:
+            print(f'''
+            Inside job:
+            J = {aux_J}
+            c_hat_J = {aux_c_hat_J}
+            k = {k}
+            r = {r}
+            J[k] = {aux_J[k]}
+            I[r] (to leave) = {aux_I[r]}
+            A_artificial[r] = {A_artificial[r]}
+            A_artificial[r, J[k]] = {A_artificial[r, aux_J[k]]}
+            ''')
+            if A_artificial[r, aux_J[k]] == 0:
                 # if it is not possible, we'll remove k from the non-basic variables
                 # and try again
                 aux_J.pop(k)
@@ -296,12 +323,20 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
                     valid_non_basic_variable_found = True
             # 6. If there are no more non-basic variables to try, we should stop
             proceed = proceed and len(aux_J) > 0
-        k = k if valid_non_basic_variable_found else None
+        # if we've found a variable capable of entering the basis without violating
+        # no constraints, old_aux_J will store the value from J that must enter the
+        # basis. That happens because we iterate through a copy of J (and make a
+        # backup copy of it - old_aux_J) in order to find non basic variables 
+        # capable of joining the basis. lines 294 ~ 321 contains this implementation
+        k = J.index(old_aux_J[k]) if valid_non_basic_variable_found else None
         return k
 
     # Compute J for the original non-basic variables
     J = list(
         set(_compute_J(n, I)) - set(I_star)
+    )
+    J = list(
+        set(range(n)) - set(I_star)
     )
 
     # We're still in phase 1, so we need to compute things taking into
@@ -317,6 +352,7 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     # The while loop below should run only if there are artificial variables
     # in the basis
 
+    debug_info['constraints_removed'] = []
     while artificial_variables_in_basis:
         # 1. compute A_I, J, A_J, x_I, π
         A_I, x_I, π, _ = _compute_A_I_x_I_π_and_z_0(A_artificial, b_artificial, c_artificial, I_to_clean)
@@ -334,11 +370,18 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
             sanitized_A = np.delete(sanitized_A, r, axis=0) # as well from original 
             b_artificial = np.delete(b_artificial, r) # from artificial
             sanitized_b = np.delete(sanitized_b, r) # as well from original
-            # 5.2. update I_to_clean
+            # 5.2 add to debug info that some constraint was removed
+            debug_info['constraints_removed'].append(deepcopy(I_to_clean[r]))
+            # 5.3. update I_to_clean
             I_to_clean.pop(r)
         else: # otherwise, we should pivot k and r variables
             # 6. update I and J
             I_to_clean, J = _update_I_and_J(I_to_clean, J, k, r)
+            print(f'''
+            After updates:
+            I = {I_to_clean}
+            J = {J}
+            ''')
             # 7. remove artificial variables from J
             J = list(set(J) - set(artificial_variables_indices))
         # 8.1 update the artificial variables indices
