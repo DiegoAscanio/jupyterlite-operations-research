@@ -305,9 +305,8 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         return k
 
     # Compute J for the original non-basic variables
-    J = list(
-        set(_compute_J(n, I)) - set(I_star)
-    )
+    # What doesn't belong to I_star should belong to J
+    # Simple as that!
     J = list(
         set(range(n)) - set(I_star)
     )
