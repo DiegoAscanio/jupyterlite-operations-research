@@ -257,6 +257,8 @@ def _markdown_final_step(last_step : dict, iteration) -> str:
     solution_type = _solution_types_map[last_step['solution_type']]
     n = len(last_step['C'])
     I_star = last_step['I']
+    J = last_step['J']
+    c_hat_J = last_step['c_hat_J']
     z_star = last_step['T'][0, -1]
     x_star = np.zeros(n)
     x_star[I_star] = last_step['T'][1:, -1]
@@ -295,6 +297,8 @@ def _markdown_final_step(last_step : dict, iteration) -> str:
     markdown += f'Optimal Solution: \\\\(X^{{*}} = {[f'{x:.3f}' for x in x_star]}\\\\)\n\n'
     markdown += f'Optimal Value: \\\\(Z^{{*}} = {z_star:.3f}\\\\)\n\n'
     markdown += f'Optimal Basis: \\\\({I_star}\\\\)\n\n'
+    markdown += f'Final non-basic variables set J: \\\\({J}\\\\)\n\n'
+    markdown += f'\\\\(\\hat{{C}}_{{J}}\\\\): \\\\({c_hat_J.tolist()}\\\\)\n\n'
     markdown += f'Number of Iterations: {iteration + 1}\n\n'
 
     return markdown
