@@ -210,7 +210,7 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     if not feasible:
         return I, A_I, A, b, feasible, iterations_count, debug_info
 
-    # 4.2 Check if there are artificial variables are in the basis
+    # 4.2 Check if there are artificial variables in basis
     I_restricted_to_artificial_variables_in_I = np.intersect1d(I_star,artificial_variables_indices)
 
     # If there aren't any artificial variables in the basis, return I_star, A_I_star, A, feasible, debug_info
@@ -361,7 +361,7 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     A_I_sanitized = _compute_A_I(A, I_sanitized)
     return I_sanitized, A_I_sanitized, sanitized_A, sanitized_b, feasible, iterations_count, debug_info
 
-def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:    
+def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:
     """
     Solves the linear programming minimization problem where:
         A is the matrix of coefficients of the constraints,
@@ -510,6 +510,46 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = 
     b = np.copy(b)
     c = np.copy(c)
     I = np.copy(I)
+    # Find a feasible initial basis
+    I, A_I, A_artificial, b, feasible, iterations_count, debug_info = _simplex_find_feasible_initial_basis(A, b, c, I, debug)
+    # If the original problem is infeasible, return the expected values
+    if not feasible:
+        return 0, np.zeros(A.shape[1]), I, A_I, A, iterations_count, -1, debug_info
+    # Otherwise, solve the problem with the feasible initial basis granted:
+    # the second phase of the 2-phases simplex method
+    z_star, x_star, I_star, A_I_star, A, iterations_count_second_phase, solution_type, debug_info_second_phase = _simplex_with_feasible_initial_basis(A, b, c, I, debug)
+    # Append the debug information from the second phase to the debug information from the first phase
+    debug_info['second phase'] = debug_info_second_phase
+    return z_star, x_star, I_star, A_I_star, A, iterations_count + iterations_count_second_phase, solution_type, debug_info
+
+def simplex2(A: np.ndarray, b: np.ndarray, c: np.ndarray, debug = False) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:    
+    """
+    Solves the linear programming minimization problem through the 2-phases simplex where:
+        A is the matrix of coefficients of the constraints,
+        b is the vector of the right-hand side of the constraints,
+        c is the vector of coefficients of the objective function,
+        I is the set of indices of the basic variables, feasible or not,
+        debug is a boolean variable to print the steps of the simplex method.
+    It returns:
+        z_star: the optimal value of the objective function,
+        x_star: the optimal solution,
+        I_star: the set of indices of the basic variables in the optimal solution,
+        A_I: the matrix of coefficients of the basic variables in the optimal solution,
+        A: the matrix of coefficients of the constraints after the method,
+        iterations_count: the number of iterations needed to reach the optimal solution,
+        solution_type: the type of the solution
+            1 - optimal finite solution found,
+            2 - multiple optimal solutions found,
+            3 - unbounded solution,
+            -1 - infeasible solution,
+        debug_info: a dictionary with debug information.
+    """
+    # Create copies of the input matrices so we don't modify the original ones
+    m, n = A.shape
+    A = np.copy(A)
+    b = np.copy(b)
+    c = np.copy(c)
+    I = list(range(n - m, n))
     # Find a feasible initial basis
     I, A_I, A_artificial, b, feasible, iterations_count, debug_info = _simplex_find_feasible_initial_basis(A, b, c, I, debug)
     # If the original problem is infeasible, return the expected values
