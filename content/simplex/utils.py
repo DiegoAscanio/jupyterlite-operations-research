@@ -41,3 +41,20 @@ def array_to_markdown(arr: np.ndarray) -> str:
         return out
     else:
         raise ValueError("Only 1D or 2D arrays are supported by this function.")
+
+def lexicographic_comparison(a : list | np.ndarray, b: list | np.ndarray) -> int:
+    def first_element_is_list(iterable):
+        condition = lambda x: type(x) == list or type(x) == np.ndarray
+        return next(
+            (i for i in iterable if condition(i)), None
+        )
+    if first_element_is_list(a) or first_element_is_list(b):
+        raise Exception('Error, arrays must be 1-dimensional only')
+    if len(a) != len(b):
+        raise Exception('Error, arrays must have the same length')
+    for a_, b_ in zip(a, b):
+        if a_ > b_:
+            return 1
+        elif a_ < b_:
+            return -1
+    return 0
