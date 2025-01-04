@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 from typing import Any
 import numpy as np
 from copy import deepcopy
@@ -14,8 +13,8 @@ def _compute_A_I(A: np.ndarray, I: list) -> np.ndarray:
     return A_I
 
 def _compute_J(n: int, I: list) -> list:
-    J = np.setdiff1d(np.arange(n), I).tolist()
-    return J
+    J = np.setdiff1d(np.arange(n), I)
+    return list(J)
 
 def _compute_A_J(A: np.ndarray, J: list) -> np.ndarray:
     A_J = A[:, J]
@@ -152,7 +151,7 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     x_I = _compute_X_I(A_I, b)
 
     # Check if the initial basis is already feasible
-    if np.all(x_I > 0):
+    if np.all(x_I >= 0):
         return I, A_I, A, b, True, 0, debug_info
 
     # If not, perform the first phase of the 2-phase simplex method
@@ -528,7 +527,6 @@ def simplex2(A: np.ndarray, b: np.ndarray, c: np.ndarray, debug = False) -> tupl
         A is the matrix of coefficients of the constraints,
         b is the vector of the right-hand side of the constraints,
         c is the vector of coefficients of the objective function,
-        I is the set of indices of the basic variables, feasible or not,
         debug is a boolean variable to print the steps of the simplex method.
     It returns:
         z_star: the optimal value of the objective function,

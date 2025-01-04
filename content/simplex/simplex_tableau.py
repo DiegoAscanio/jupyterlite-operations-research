@@ -97,7 +97,7 @@ def _find_k_to_enter(T: np.ndarray, J: list) -> Tuple[np.intp, np.float64]:
     k = np.argmax(c_hat)
     return J[k], c_hat[k]
 
-def _find_r_to_leave(T: np.ndarray, k: np.intp, I : list) -> Tuple[np.intp, np.ndarray, np.ndarray]:
+def _find_r_to_leave_cycles_allowed(T: np.ndarray, k: np.intp, I : list) -> Tuple[np.intp, np.ndarray, np.ndarray]:
     '''
         This function finds the index of the variable to leave the basis
         by finding the index of the minimum ratio of the right hand side
@@ -118,6 +118,64 @@ def _find_r_to_leave(T: np.ndarray, k: np.intp, I : list) -> Tuple[np.intp, np.n
     r = np.argmin(ratios)
     return I[r], ratios, y_k
 
+def _find_r_to_leave_cycles_forbidden(T: np.ndarray, k: np.intp, I : list) -> Tuple[np.intp, np.ndarray, np.ndarray]:
+    '''
+        This function finds the index of the variable to leave the basis
+        by finding the index of the minimum ratio of the right hand side
+        to the entering variable in the tableau if and only if this
+        minimum is a singleton - to forbid cycles - if not, we'll use
+        lexicographic rule for selecting an exiting variable in order
+        to prevent cycles, until the selected minimum is a singleton
+        Arguments:
+            T : np.ndarray : m x n matrix
+            k : int : Index of the variable to enter the basis
+        Returns:
+            I[r] : int : variable to leave the basis
+            ratios : np.ndarray : Ratios of the right hand side to the entering variable
+            y_k : np.ndarray : Values of the entering variable in the tableau
+    '''
+    _, n = T[1:,:-1].shape
+    y_k = T[1:, k]
+    b = T[1:, -1]
+    ratios: np.ndarray = np.where(
+        y_k > 0, b / y_k, np.inf
+    )
+
+    # lexicographic rule
+    r_to_leave_value = np.min(ratios)
+    r_to_leave = np.argmin(ratios)
+    singleton = len(ratios[ratios == r_to_leave_value]) == 1
+    columns = iter(set(range(n)) - set([k]))
+    while not singleton:
+        c = next(columns)
+        y_c = T[1:,c]
+        aux_ratios = np.where( y_k > 0, y_c / y_k, np.inf)
+        r_to_leave_value = np.min(aux_ratios)
+        r_to_leave = np.argmin(aux_ratios)
+        singleton = len(aux_ratios[aux_ratios == r_to_leave_value]) == 1
+    r = r_to_leave
+    return I[r], ratios, y_k
+
+def _find_r_to_leave(T: np.ndarray, k: np.intp, I : list, cycles_allowed = True) -> Tuple[np.intp, np.ndarray, np.ndarray]:
+    '''
+        This function finds the index of the variable to leave the basis
+        by finding the index of the minimum ratio of the right hand side
+        to the entering variable in the tableau. We admit to allow cycles
+        or don't (default is to allow, for now)
+        Arguments:
+            T : np.ndarray : m x n matrix
+            k : int : Index of the variable to enter the basis
+        Returns:
+            I[r] : int : variable to leave the basis
+            ratios : np.ndarray : Ratios of the right hand side to the entering variable
+            y_k : np.ndarray : Values of the entering variable in the tableau
+    '''
+    _find_r =   _find_r_to_leave_cycles_allowed\
+                if cycles_allowed else\
+                _find_r_to_leave_cycles_forbidden
+            
+    return _find_r(T, k, I)
+    
 def _handle_pivot_row(T: np.ndarray, r: np.intp, k: np.intp, I : list) -> Tuple[np.ndarray, tuple]:
     '''
         This function handles the pivot row operation by dividing
@@ -274,7 +332,7 @@ def simplex_tableau(
     C : np.ndarray,
     I : list,
     T = None,
-    max_iter = 1000
+    max_iter = 10
     ) -> Dict:
     '''
         This function solves the linear programming problem
