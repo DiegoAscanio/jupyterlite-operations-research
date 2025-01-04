@@ -142,21 +142,36 @@ def _find_r_to_leave_cycles_forbidden(T: np.ndarray, k: np.intp, I : list) -> Tu
     )
 
     # lexicographic rule
-    r_to_leave_value = np.min(ratios)
-    r_to_leave = np.argmin(ratios)
-    singleton = len(ratios[ratios == r_to_leave_value]) == 1
+    # how does it works? It starts as usual trying to select the basis variable
+    # with the minimum ratio, but if there are more than one minimum ratio, it
+    # will move into a column (usually the first one) and select the minimum ratio
+    # from the remaining variables. If there are still more than one minimum ratio,
+    # it will move into the next column and so on until it finds a singleton minimum
+    # which is guaranteed to happen because the A_I matrix is non-singular.
+    minimum_value = np.min(ratios)
+    candidate_indices_to_leave, *_ = np.where(ratios == minimum_value)
+
+    singleton = len(candidate_indices_to_leave) == 1
     columns = iter(set(range(n)) - set([k]))
     while not singleton:
         c = next(columns)
         y_c = T[1:,c]
-        aux_ratios = np.where( y_k > 0, y_c / y_k, np.inf)
-        r_to_leave_value = np.min(aux_ratios)
-        r_to_leave = np.argmin(aux_ratios)
-        singleton = len(aux_ratios[aux_ratios == r_to_leave_value]) == 1
-    r = r_to_leave
+        # we should restrict next ratios generation to only the rows where ties
+        # happened in the previous iteration
+        aux_ratios = y_c[candidate_indices_to_leave] / y_k[candidate_indices_to_leave]
+        minimum_value = np.min(aux_ratios)
+        # we restrict even more the search, therefore our computational effort
+        # is reduced
+        candidate_indices_to_leave, *_ = np.where(aux_ratios == minimum_value)
+        # then we check if we have a singleton
+        singleton = len(candidate_indices_to_leave) == 1
+    # As our A_I matrix is non-singular, we are guaranteed to find a singleton
+    # so, our candidate_indices_to_leave will have only one element and we can
+    # safely retrieve it as a variable to leave the basis
+    r = candidate_indices_to_leave[0]
     return I[r], ratios, y_k
 
-def _find_r_to_leave(T: np.ndarray, k: np.intp, I : list, cycles_allowed = True) -> Tuple[np.intp, np.ndarray, np.ndarray]:
+def _find_r_to_leave(T: np.ndarray, k: np.intp, I : list, cycles_allowed = False) -> Tuple[np.intp, np.ndarray, np.ndarray]:
     '''
         This function finds the index of the variable to leave the basis
         by finding the index of the minimum ratio of the right hand side
@@ -331,6 +346,7 @@ def simplex_tableau(
     B : np.ndarray,
     C : np.ndarray,
     I : list,
+    cycles_allowed = False,
     T = None,
     max_iter = 10
     ) -> Dict:
@@ -382,7 +398,7 @@ def simplex_tableau(
         # 2.1 find the index of the variable to enter the basis
         k, c_hat_k = _find_k_to_enter(T, J)
         # 2.2 find the index of the variable to leave the basis
-        r, ratios, y_k = _find_r_to_leave(T, k, I)
+        r, ratios, y_k = _find_r_to_leave(T, k, I, cycles_allowed)
         # 2.3 check if the optimal solution has been found when
         # computing the entering variable
         proceed_c_hat_k_gt_0, _ = _evaluate_c_hat_k(c_hat_k)
