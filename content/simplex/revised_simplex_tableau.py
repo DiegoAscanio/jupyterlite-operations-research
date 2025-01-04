@@ -39,9 +39,28 @@ def _update_I_and_J(I : list, J : list, k : np.intp, r: np.intp) -> Tuple[list, 
     J_new[k] = aux
     return I_new, J_new
 
-def _find_k_to_enter(w : np.ndarray, A : np.ndarray, C : np.ndarray, J : list) -> Tuple[np.intp, np.float64, np.ndarray]:
+def _bland_rule_to_find_k_to_enter(c_hat_J) -> np.intp:
+    c_hat_J_gt_zero, *_ = np.where(c_hat_J > 0)
+    if len(c_hat_J_gt_zero) > 0:
+        # returns the leftmost element greater than zero
+        # and by bland's rule, according to the textbook
+        # this prevents cycling
+        return c_hat_J_gt_zero[0]
+    else:
+        # if c_hat_J <= 0, then we have an optimal solution
+        # therefore, the simple argmax from c_hat_J is 
+        # enough to inform that the algorithm should stop
+        return np.argmax(c_hat_J)
+
+def _find_k_to_enter(
+    w : np.ndarray,
+    A : np.ndarray,
+    C : np.ndarray,
+    J : list,
+    cycle_proof: bool = True
+) -> Tuple[np.intp, np.float64, np.ndarray]:
     c_hat_J = np.round(w @ A[:, J] - C[J], 6) # rounding to ensure that the first max will be the selected one
-    k = np.argmax(c_hat_J) # by the bland's rule, argmax prevents cycling
+    k = np.argmax(c_hat_J) if not cycle_proof else _bland_rule_to_find_k_to_enter(c_hat_J)
     c_hat_k = c_hat_J[k]
     return k, c_hat_k, c_hat_J
 
