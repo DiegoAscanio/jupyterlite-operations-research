@@ -114,7 +114,8 @@ def _main_step(
     B: np.ndarray,
     C: np.ndarray,
     I: list,
-    J: list
+    J: list,
+    cycle_proof = True
 ) -> Tuple[Dict, bool]:
     # variables
     proceed = True
@@ -127,7 +128,7 @@ def _main_step(
 
     # 1. Find k to enter
     w = T[0, :-1]
-    k, c_hat_k, c_hat_J = _find_k_to_enter(w, A, C, J)
+    k, c_hat_k, c_hat_J = _find_k_to_enter(w, A, C, J, cycle_proof)
     y_k = A_I_inv @ A[:, J[k]]
     step_operations['k'] = k
     step_operations['J[k]'] = J[k]
@@ -173,7 +174,8 @@ def revised_simplex_tableau(
     B: np.ndarray,
     C: np.ndarray,
     I: list,
-    max_iter: int = 10
+    max_iter: int = 10,
+    cycle_proof = True
 ) -> Dict:
     # variables
     m, n = A.shape
@@ -188,7 +190,7 @@ def revised_simplex_tableau(
 
     # 2. then the main steps
     while proceed:
-        step_operations, proceed = _main_step(T, A, B, C, I, J)
+        step_operations, proceed = _main_step(T, A, B, C, I, J, cycle_proof)
         revised_tableau_steps[iterations] = step_operations
         iterations += 1
         proceed = proceed and iterations < max_iter
@@ -201,6 +203,11 @@ def revised_simplex_tableau(
     revised_tableau_steps[iterations - 1]['C'] = C
     revised_tableau_steps[iterations - 1]['B'] = B
     revised_tableau_steps[iterations - 1]['A'] = A
+
+    # if exceeded max_iters we assume that
+    # simplex entered in loop
+    if iterations >= max_iter:
+        revised_tableau_steps[iterations - 1]['solution_type'] = -2
     return revised_tableau_steps
 
 def _repr_row_pivot_operations(row_pivot_operations: tuple, labels: list, I : list) -> str:
@@ -269,7 +276,8 @@ _solution_types_map = {
     1: 'Optimal unique solution',
     2: 'Optimal multiple solutions',
     3: 'Unbounded solution',
-    -1: 'Infeasible solution' 
+    -1: 'Infeasible solution',
+    -2: 'Entered in loop'
 }
 
 def _markdown_final_step(last_step : dict, iteration) -> str:
