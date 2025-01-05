@@ -346,8 +346,8 @@ def simplex_tableau(
     B : np.ndarray,
     C : np.ndarray,
     I : list,
-    cycles_allowed = False,
     T = None,
+    cycles_allowed = False,
     max_iter = 10
     ) -> Dict:
     '''
