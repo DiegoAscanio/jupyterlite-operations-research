@@ -180,7 +180,7 @@ def _find_r_to_leave_cycles_forbidden(T: np.ndarray, k: np.intp, I : list) -> Tu
         y_c = T[1:,c]
         aux_ratios = np.where(y_k > 0, y_c / y_k, np.inf)
         minimum_value = np.min(aux_ratios)
-        minimum_values_indices = np.where(aux_ratios == minimum_value)
+        minimum_values_indices, *_ = np.where(aux_ratios == minimum_value)
         singleton = len(minimum_values_indices) == 1
         # As our A_I matrix is non-singular, we are guaranteed to find a singleton
         # so, the last computed r is guaranteed to come from a singleton set
