@@ -162,7 +162,7 @@ def _find_r_who_leaves_cycle_proof(
         y_c = A_I_inv @ A[:, c]
         aux_ratios = np.where(y_k > 0, y_c / y_k, np.inf)
         minimum_value = np.min(aux_ratios)
-        minimum_values_indices = np.where(aux_ratios == minimum_value)
+        minimum_values_indices, *_ = np.where(aux_ratios == minimum_value)
         singleton = len(minimum_values_indices) == 1
         r = np.argmin(aux_ratios)
         # As our A_I matrix is non-singular, we are guaranteed to find a singleton
@@ -248,6 +248,93 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
     I[r] = to_enter
     J[k] = to_exit
     return I, J
+
+def _drive_artificial_variables_out_of_basis(
+    A_artificial: np.ndarray,
+    A_original: np.ndarray,
+    b: np.ndarray,
+    c_artificial: np.ndarray,
+    I_from_phase_1: list,
+    artificial_variables: list
+):
+    _, n = A_original.shape
+    # this J set contains all non basic variables
+    # from the original problem that might be used
+    # to replace the artificial variables in the basis
+    # but not all of them are suitable for this task
+    # only those who have a positive reduced cost, whose
+    # c_hat_j >= 0
+    J = list(set(range(n)) - set(I_from_phase_1))
+    # 1. compute pi
+    A_I_inv = np.linalg.inv(_compute_A_I(A_artificial, I_from_phase_1))
+    π = c_artificial[I_from_phase_1] @ A_I_inv
+    # 2. compute c_hat_J
+    c_hat_J = π @ A_artificial[:, J] - c_artificial[J]
+    # 3. build a list of valid non-basic variables to enter the basis
+    J_valid_filter, *_ = np.where(c_hat_J >= 0)
+    J_valid = [J[j] for j in J_valid_filter]
+    # Now we'll build an strategy to drive artificial variables out of the basis
+    # We can build a map relating the artificial variable and it's valid non-basic
+    # replacement, if possible. It it is not possible, we'll map it to None and
+    # then as the last step we'll rearange our basis to let the artificial variables
+    # that cannot be replaced by non-basic variables to be the last ones in the basis
+    # then we'll replace all replaceable artificial variables by non-basic variables
+    # and drop the not replaceable from the basis, as well as the constraints that
+    # contain them, as they're redundant and not necessary anymore.
+    replacement_map = {}
+    for r_artificial in artificial_variables:
+        replacement_map[r_artificial] = None
+        for k_valid_candidate in J_valid:
+            r = I_from_phase_1.index(r_artificial)
+            k = J.index(k_valid_candidate)
+            aux_I = I_from_phase_1.copy()
+            aux_J = J.copy()
+            aux_I, aux_J = _update_I_and_J(aux_I, aux_J, k, r)
+            # Compute A_I to check if the candidate non basic variable produces
+            # a non-singular matrix, if it does, we can replace the artificial
+            # variable by the non-basic variable
+            aux_A_I = _compute_A_I(A_artificial, aux_I)
+            # if the A_I matrix is non-singular and the non-negativity constraints
+            # are satisfied, we can replace the artificial variable by the non-basic
+            if np.linalg.det(aux_A_I) != 0 :
+                # compute x_I to check if the non-negativity constraints are satisfied
+                x_I = _compute_X_I(aux_A_I, b)
+                if np.all(x_I >= 0):
+                    replacement_map[r_artificial] = k
+                    break
+        # Now, if some valid non-basic variable was found to replace the artificial
+        # variable, we should remove it from J_valid as it can't be used to replace
+        # another artificial variable
+        if replacement_map[r_artificial] is not None:
+            J_valid = list(set(J_valid) - set([replacement_map[r_artificial]]))
+
+    # Now we'll replace all artificial variables that can be replaced by non-basic
+    # variables
+    constraints_to_drop = []
+    for r_artificial in replacement_map:
+        r = I_from_phase_1.index(r_artificial)
+        k = replacement_map[r_artificial]
+        if k:
+            I_from_phase_1, J = _update_I_and_J(I_from_phase_1, J, k, r)
+            # remove artificial from J so it won't come back later.
+            # redundant, but it is better to be explicit than implicit
+            J = list(set(J) - set([r]))
+        else:
+            constraints_to_drop.append(r)
+
+    # Now we drop the constraints that contain the artificial variables that
+    # could not be replaced by non-basic variables
+    A_original = np.delete(A_original, constraints_to_drop, axis=0)
+    b = np.delete(b, constraints_to_drop)
+    # And we remove the artificial variables from the basis
+    # As I_from_phase_1 is updated with original variables capable
+    # of replacing the artificial variables and the artificials that 
+    # could not be replaced came from redundant constraints that were
+    # removed at the previous step, we can safely remove the artificial
+    # variables from the basis.
+    I_from_phase_1 = list(set(I_from_phase_1) - set(artificial_variables))
+    I_star = I_from_phase_1
+    return I_star, A_original, b
 
 def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False, cycle_proof = True) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, bool, int, dict]:
     """
@@ -349,146 +436,17 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     if not artificial_variables_in_basis:
         return I_star, A_I_star, A, b, feasible, iterations_count, debug_info
 
-    # Otherwise chose an original non-basic variable to replace the artificial basic variable
-    # until there are no artificial variables in the basis or if not possible, to suppress
-    # the constraints that contain the artificial basic variables which could not be replaced
-    counter = 1
-
-    # define a nested function in here to select only artificial variables
-    # in the basis for replacement. The criteria for picking an artificial
-    # variable to be replaced is the one that has the lowest index in the
-    # artificial variables indices list
-    def _pick_artificial_variable_in_basis_to_leave(I_star, artificial_variables_indices):
-        return np.intp(I_star.index(np.min(np.intersect1d(I_star, artificial_variables_indices))))
-
-    # define a nested function in here to select only non-basic variables
-    # to enter the basis for replacement. The criteria for picking a non-basic
-    # variable to enter the basis is the one that has the maximum ĉ_j value
-    # and is the leftermost in the list of non-basic variables
-    def _pick_non_basic_variable_to_enter(
-        A_artificial: np.ndarray,
-        b_artificial: np.ndarray,
-        c_artificial: np.ndarray,
-        I: list,
-        J: list,
-        c_hat_J: np.ndarray,
-        r: np.intp,
-    ) -> np.intp | None:
-        # Here we want to force the selection of a non-basic variable to replace
-        # an artificial variable in the basis, even if it worsens the objective
-        # function value, as we're interested in finding a feasible basis with 
-        # no artificial variables for phase 2 of the 2-phase simplex method
-        aux_I = I.copy()
-        aux_J = J.copy()
-        aux_c_hat_J = np.copy(c_hat_J)
-        k = None
-        proceed = len(aux_J) > 0
-        valid_non_basic_variable_found = False
-        while proceed:
-            # we try first to find a non-basic variable to enter with the best
-            # c_hat value
-            k, _ = _find_k_who_enters(aux_c_hat_J)
-            # we then check if it is possible to pivot the artificial variable
-            # column with the k-th non-basic variable column
-            if A_artificial[r, aux_J[k]] == 0:
-                # if it is not possible, we'll remove k from the non-basic variables
-                # and try again
-                aux_J.pop(k)
-                aux_c_hat_J = np.delete(aux_c_hat_J, k)
-            else:
-                # then, if it is possible we'll check that the resulting X_I satisfies
-                # non-negativity constraints
-                # 1. Backup aux_I and aux_J
-                old_aux_I = aux_I.copy()
-                old_aux_J = aux_J.copy()
-                # 2. Update aux_I and aux_J
-                aux_I, aux_J = _update_I_and_J(aux_I, aux_J, k, r)
-                # 3. Compute X_I
-                A_I = _compute_A_I(A_artificial, aux_I)
-                # 3.1 If the A_I matrix is singular, we we'll fill the X_I with -inf
-                # so we'll force the selection of another non-basic variable
-                if np.linalg.det(A_I) == 0:
-                    x_I = np.full(A_I.shape[0], -np.inf)
-                else: # otherwise, we'll compute the X_I
-                    x_I = _compute_X_I(A_I, b_artificial)
-                # 4. If any X_I is negative, we'll remove k from the non-basic variables
-                # and try again
-                if np.any(x_I < 0):
-                    aux_I = old_aux_I # restore aux_I
-                    aux_J = old_aux_J # restore aux_J
-                    aux_J.pop(k)
-                    aux_c_hat_J = np.delete(aux_c_hat_J, k)
-                # 5. Otherwise, it impplies that we found a non-basic variable to enter
-                # the basis that allows us to pivot the artificial variable column with
-                # the k-th non-basic variable column while keeping the non-negativity
-                # constraints satisfied. So, we can stop the loop
-                else:
-                    proceed = False
-                    valid_non_basic_variable_found = True
-            # 6. If there are no more non-basic variables to try, we should stop
-            proceed = proceed and len(aux_J) > 0
-        # if we've found a variable capable of entering the basis without violating
-        # no constraints, old_aux_J will store the value from J that must enter the
-        # basis. That happens because we iterate through a copy of J (and make a
-        # backup copy of it - old_aux_J) in order to find non basic variables 
-        # capable of joining the basis. lines 294 ~ 321 contains this implementation
-        k = J.index(old_aux_J[k]) if valid_non_basic_variable_found else None
-        return k
-    # Compute J for the original non-basic variables
-    # What doesn't belong to I_star should belong to J
-    # Simple as that!
-    J = list(
-        set(range(n)) - set(I_star)
+    # Else, drive the artificial variables out of the basis
+    I_sanitized, sanitized_A, sanitized_b = _drive_artificial_variables_out_of_basis(
+        A_artificial,
+        A,
+        b,
+        c_artificial,
+        list(I_star),
+        artificial_variables_indices
     )
+    A_I_sanitized = _compute_A_I(sanitized_A, I_sanitized)
 
-    # We're still in phase 1, so we need to compute things taking into
-    # account the artificial problem. That's why we will define again
-    # A_artificial, c_artificial, I_to_clean and b_artificial, because
-    # explicit is better than implicit
-    
-    A_artificial = np.copy(A_artificial)
-    b_artificial = np.copy(b)
-    I_to_clean = list(I_star).copy()
-    c_artificial = np.copy(c_artificial)
-
-    # The while loop below should run only if there are artificial variables
-    # in the basis
-
-    debug_info['constraints_removed'] = []
-    while artificial_variables_in_basis:
-        # 1. compute A_I, J, A_J, x_I, π
-        A_I, x_I, π, _ = _compute_A_I_x_I_π_and_z_0(A_artificial, b_artificial, c_artificial, I_to_clean)
-        # 2. compute c_hat_J
-        c_hat_J = _compute_c_hat_J(π, A_artificial, c_artificial, J)
-        # 3. pick an artificial variable in the basis to leave
-        r = _pick_artificial_variable_in_basis_to_leave(I_to_clean, artificial_variables_indices)
-        # 4. find a non-basic variable to enter
-        k = _pick_non_basic_variable_to_enter(A_artificial, b_artificial, c_artificial, I_to_clean, J, c_hat_J, r)
-        # 5. if no non-basic variable was found, we should suppress the constraint
-        # that contains the artificial basic variable that could not be replaced
-        if k is None:
-            # 5.1. remove the constraint that contains the artificial basic variable
-            A_artificial = np.delete(A_artificial, r, axis=0) # from artificial
-            sanitized_A = np.delete(sanitized_A, r, axis=0) # as well from original 
-            b_artificial = np.delete(b_artificial, r) # from artificial
-            sanitized_b = np.delete(sanitized_b, r) # as well from original
-            # 5.2 add to debug info that some constraint was removed
-            debug_info['constraints_removed'].append(deepcopy(I_to_clean[r]))
-            # 5.3. update I_to_clean
-            I_to_clean.pop(r)
-        else: # otherwise, we should pivot k and r variables
-            # 6. update I and J
-            I_to_clean, J = _update_I_and_J(I_to_clean, J, k, r)
-            # 7. remove artificial variables from J
-            J = list(set(J) - set(artificial_variables_indices))
-        # 8.1 update the artificial variables indices
-        artificial_variables_indices = np.intersect1d(artificial_variables_indices, I_to_clean)
-        # 8.2 update the artificial variables in the basis
-        artificial_variables_in_basis = len(artificial_variables_indices) > 0
-        
-    # return the updated basis
-    I_sanitized = I_to_clean.copy()
-    A_I_sanitized = _compute_A_I(A, I_sanitized)
     return I_sanitized, A_I_sanitized, sanitized_A, sanitized_b, feasible, iterations_count, debug_info
 
 def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False, cycle_proof = True) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:
