@@ -87,11 +87,11 @@ def _find_r_to_leave_cycle_proof(
     # over complexity and this is simple enough to guarantee the proper
     # execution of our code.
     singleton = len(candidate_indices_to_leave) == 1 or minimum_value == np.inf
-    # we can set r to the first element of candidate_indices_to_leave as
-    # if it is a singleton, it will be the only element in the array
+    # we can set r to the argmin of ratios as
+    # if it is a singleton, it will be the only minimum in the array
     # but if it is not, r will be updated inside the loop until we find
     # a singleton set
-    r = candidate_indices_to_leave[0]
+    r = np.argmin(ratios)
     while not singleton:
         c = next(columns)
         y_c = A_I_inv @ A[:, c]
@@ -99,11 +99,11 @@ def _find_r_to_leave_cycle_proof(
         minimum_value = np.min(aux_ratios)
         minimum_values_indices = np.where(aux_ratios == minimum_value)
         singleton = len(minimum_values_indices) == 1
-        r = candidate_indices_to_leave[np.argmin(aux_ratios)]
         # As our A_I matrix is non-singular, we are guaranteed to find a singleton
         # so, the last computed r is guaranteed to come from a singleton set
         # as the last computed aux_ratios will produce a singleton min
         # safely retrieve it as a variable to leave the basis
+        r = np.argmin(aux_ratios)
     return r, ratios
 
 def _find_r_to_leave(
