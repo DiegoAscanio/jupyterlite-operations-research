@@ -176,7 +176,8 @@ def _find_r_to_leave_cycles_forbidden(T: np.ndarray, k: np.intp, I : list) -> Tu
         aux_ratios = y_c[candidate_indices_to_leave] / y_k[candidate_indices_to_leave]
         minimum_value = np.min(aux_ratios)
         # we restrict even more the search, therefore our computational effort
-        # is reduced
+        # is reduced, retaining context of previous candidate indices to ensure
+        # proper filtering
         candidate_indices_to_leave, *_ = np.array(
             [candidate_indices_to_leave[np.where(aux_ratios == minimum_value)]]
         )
