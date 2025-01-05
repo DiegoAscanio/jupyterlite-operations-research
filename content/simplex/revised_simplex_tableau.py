@@ -100,7 +100,6 @@ def _find_r_to_leave_cycle_proof(
         candidate_indices_to_leave, *_ = np.array(
             [candidate_indices_to_leave[np.where(aux_ratios == minimum_value)]]
         )
-        print(candidate_indices_to_leave)
         # then we check if we have a singleton
         singleton = len(candidate_indices_to_leave) == 1
     # As our A_I matrix is non-singular, we are guaranteed to find a singleton
