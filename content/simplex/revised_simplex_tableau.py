@@ -39,34 +39,99 @@ def _update_I_and_J(I : list, J : list, k : np.intp, r: np.intp) -> Tuple[list, 
     J_new[k] = aux
     return I_new, J_new
 
-def _bland_rule_to_find_k_to_enter(c_hat_J) -> np.intp:
-    c_hat_J_gt_zero, *_ = np.where(c_hat_J > 0)
-    if len(c_hat_J_gt_zero) > 0:
-        # returns the leftmost element greater than zero
-        # and by bland's rule, according to the textbook
-        # this prevents cycling
-        return c_hat_J_gt_zero[0]
-    else:
-        # if c_hat_J <= 0, then we have an optimal solution
-        # therefore, the simple argmax from c_hat_J is 
-        # enough to inform that the algorithm should stop
-        return np.argmax(c_hat_J)
-
 def _find_k_to_enter(
     w : np.ndarray,
     A : np.ndarray,
     C : np.ndarray,
     J : list,
-    cycle_proof: bool = True
 ) -> Tuple[np.intp, np.float64, np.ndarray]:
     c_hat_J = np.round(w @ A[:, J] - C[J], 6) # rounding to ensure that the first max will be the selected one
-    k = np.argmax(c_hat_J) if not cycle_proof else _bland_rule_to_find_k_to_enter(c_hat_J)
+    k = np.argmax(c_hat_J)
     c_hat_k = c_hat_J[k]
     return k, c_hat_k, c_hat_J
 
-def _find_r_to_leave(B_prime: np.ndarray, y_k: np.ndarray) -> Tuple[np.intp, np.ndarray]:
+def _find_r_to_leave_cycle_allowed(B_prime: np.ndarray, y_k: np.ndarray) -> Tuple[np.intp, np.ndarray]:
     ratios = np.where(y_k > 0, B_prime / y_k, np.inf)
-    return np.argmin(ratios), ratios # by the bland's rule, argmin prevents cycling
+    return np.argmin(ratios), ratios
+
+def _find_r_to_leave_cycle_proof(
+    A : np.ndarray,
+    A_I_inv : np.ndarray,
+    B_prime: np.ndarray,
+    y_k: np.ndarray,
+    k : np.intp
+):
+    _, n = A.shape
+    columns = iter(set(range(n)) - set([k]))
+    ratios = np.where(y_k > 0, B_prime / y_k, np.inf)
+
+    # start lexicographic rule
+    minimum_value = np.min(ratios)
+    candidate_indices_to_leave, *_ = np.where(
+        ratios == minimum_value
+    )
+    # as in revised tableau we try to compute r to leave anyway
+    # even after an optimal was reached, when this happens, all
+    # y_k become leq 0, so ratios we'll become an array of inf
+    # then, candidate_indices we'll have a length of I, as all
+    # ratios are infinity. So that's why we added this or
+    # to the implementation. Not the most elegant solution.
+    # this one would be to refactor main step into a pipeline
+    # where find_r_to_leave would be decorated through a pipeline
+    # function who would receive proceed from _find_k_to_enter as 
+    # a parameter and only runs if proceed is True.
+    # but as we're losing a lot of time trying to prevent cycles
+    # and fixing the bugs that naturally happens when doing so,
+    # we'll leave this solution as it is. We should prefer simplicity
+    # over complexity and this is simple enough to guarantee the proper
+    # execution of our code.
+    singleton = len(candidate_indices_to_leave) == 1 or minimum_value == np.inf
+
+    print(ratios)
+    print(singleton)
+    print(len(candidate_indices_to_leave))
+    print(minimum_value)
+    print(candidate_indices_to_leave)
+    while not singleton:
+        c = next(columns)
+        y_c = A_I_inv @ A[:, c]
+        # we should restrict next ratios generation to only the rows where ties
+        # happened in the previous iteration
+        aux_ratios = y_c[candidate_indices_to_leave] / y_k[candidate_indices_to_leave]
+        minimum_value = np.min(aux_ratios)
+        # we restrict even more the search, therefore our computational effort
+        # is reduced
+        candidate_indices_to_leave, *_ = np.array(
+            [candidate_indices_to_leave[np.where(aux_ratios == minimum_value)]]
+        )
+        print(candidate_indices_to_leave)
+        # then we check if we have a singleton
+        singleton = len(candidate_indices_to_leave) == 1
+    # As our A_I matrix is non-singular, we are guaranteed to find a singleton
+    # so, our candidate_indices_to_leave will have only one element and we can
+    # safely retrieve it as a variable to leave the basis
+    print()
+    r = candidate_indices_to_leave[0]
+    return r, ratios
+
+def _find_r_to_leave(
+    A : np.ndarray,
+    A_I_inv : np.ndarray,
+    B_prime,
+    y_k: np.ndarray,
+    k : np.intp,
+    cycle_proof = True
+):
+    return _find_r_to_leave_cycle_proof(
+        A,
+        A_I_inv,
+        B_prime,
+        y_k,
+        k
+    ) if cycle_proof else _find_r_to_leave_cycle_allowed(
+        B_prime, y_k
+    )
+    
 
 def _row_operation(T_prime: np.ndarray, r: np.intp, I : list) -> Tuple[np.ndarray, tuple]:
     pivot = T_prime[r, -1]
@@ -128,7 +193,7 @@ def _main_step(
 
     # 1. Find k to enter
     w = T[0, :-1]
-    k, c_hat_k, c_hat_J = _find_k_to_enter(w, A, C, J, cycle_proof)
+    k, c_hat_k, c_hat_J = _find_k_to_enter(w, A, C, J)
     y_k = A_I_inv @ A[:, J[k]]
     step_operations['k'] = k
     step_operations['J[k]'] = J[k]
@@ -140,7 +205,14 @@ def _main_step(
     # 2.1 Retrieve B_prime
     B_prime = T[1:, -1]
     # 2.2 Now find r
-    r, ratios = _find_r_to_leave(B_prime, y_k)
+    r, ratios = _find_r_to_leave(
+        A,
+        A_I_inv,
+        B_prime,
+        y_k,
+        J[k],
+        cycle_proof
+    )
     step_operations['r'] = r
     step_operations['ratios'] = ratios
 
@@ -174,7 +246,7 @@ def revised_simplex_tableau(
     B: np.ndarray,
     C: np.ndarray,
     I: list,
-    max_iter: int = 10,
+    max_iter: int = 100,
     cycle_proof = True
 ) -> Dict:
     # variables

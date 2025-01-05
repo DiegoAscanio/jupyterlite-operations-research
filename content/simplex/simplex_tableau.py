@@ -151,7 +151,22 @@ def _find_r_to_leave_cycles_forbidden(T: np.ndarray, k: np.intp, I : list) -> Tu
     minimum_value = np.min(ratios)
     candidate_indices_to_leave, *_ = np.where(ratios == minimum_value)
 
-    singleton = len(candidate_indices_to_leave) == 1
+    # as in simplex tableau we try to compute r to leave anyway
+    # even after an optimal was reached, when this happens, all
+    # y_k become leq 0, so ratios we'll become an array of inf
+    # then, candidate_indices we'll have a length of I, as all
+    # ratios are infinity. So that's why we added this 'or'
+    # to the implementation. Not the most elegant solution.
+    # this one would be to refactor main step into a pipeline
+    # where find_r_to_leave would be decorated through a pipeline
+    # function who would receive proceed from _find_k_to_enter as 
+    # a parameter and only runs if proceed is True.
+    # but as we're losing a lot of time trying to prevent cycles
+    # and fixing the bugs that naturally happens when doing so,
+    # we'll leave this solution as it is. We should prefer simplicity
+    # over complexity and this is simple enough to guarantee the proper
+    # execution of our code.
+    singleton = len(candidate_indices_to_leave) == 1 or minimum_value == np.inf
     columns = iter(set(range(n)) - set([k]))
     while not singleton:
         c = next(columns)
@@ -162,7 +177,9 @@ def _find_r_to_leave_cycles_forbidden(T: np.ndarray, k: np.intp, I : list) -> Tu
         minimum_value = np.min(aux_ratios)
         # we restrict even more the search, therefore our computational effort
         # is reduced
-        candidate_indices_to_leave, *_ = np.where(aux_ratios == minimum_value)
+        candidate_indices_to_leave, *_ = np.array(
+            [candidate_indices_to_leave[np.where(aux_ratios == minimum_value)]]
+        )
         # then we check if we have a singleton
         singleton = len(candidate_indices_to_leave) == 1
     # As our A_I matrix is non-singular, we are guaranteed to find a singleton

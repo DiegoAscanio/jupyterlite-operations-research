@@ -41,7 +41,20 @@ def _compute_c_hat_J(π: np.ndarray, A: np.ndarray, c: np.ndarray, J: list) -> n
     c_hat_J = π.dot(A_J) - c[J]
     return c_hat_J
 
-def _find_k_who_enters(c_hat_J: np.ndarray) -> tuple[np.intp, bool]:
+def _bland_rule_to_find_k_to_enter(c_hat_J) -> np.intp:
+    c_hat_J_gt_zero, *_ = np.where(c_hat_J > 0)
+    if len(c_hat_J_gt_zero) > 0:
+        # returns the leftmost element greater than zero
+        # and by bland's rule, according to the textbook
+        # this prevents cycling
+        return c_hat_J_gt_zero[0]
+    else:
+        # if c_hat_J <= 0, then we have an optimal solution
+        # therefore, the simple argmax from c_hat_J is
+        # enough to inform that the algorithm should stop
+        return np.argmax(c_hat_J)
+
+def _find_k_who_enters(c_hat_J: np.ndarray, cycle_proof = True) -> tuple[np.intp, bool]:
     """
     Finds the index of the variable that enters the basis and returns if
     the simplex method shouuld continue. When c_hat_J[k] <= 0, the method
@@ -52,7 +65,7 @@ def _find_k_who_enters(c_hat_J: np.ndarray) -> tuple[np.intp, bool]:
         k: the index of the variable that enters the basis.
         proceed_: a boolean indicating if the simplex method should proceed.
     """
-    k: np.intp = np.argmax(c_hat_J)
+    k: np.intp = np.argmax(c_hat_J) if not cycle_proof else _bland_rule_to_find_k_to_enter(c_hat_J)
     return k, c_hat_J[k] > 0
 
 def _find_r_who_leaves(I: list, A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.ndarray, debug = False) -> tuple[np.intp, np.ndarray, bool, dict]:
@@ -116,7 +129,7 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
     J[k] = to_exit
     return I, J
 
-def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, bool, int, dict]:
+def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False, cycle_proof = True) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray, bool, int, dict]:
     """
     Finds a feasible initial basis for the 2-phase simplex method.
     This is the first phase of the 2-phase simplex method.
@@ -131,7 +144,6 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         A_I: the coefficients matrix of the basic variables.
         A: the coefficients matrix of the constraints after the first phase.
         b: the vector of the right-hand side of the constraints after the first phase.
-        c: the vector of coefficients of the objective function after the first phase.
         feasible: a boolean indicating if the original problem is feasible.
         iterations_count: the number of iterations needed to find a feasible basis.
         debug_info: a dictionary with debug information.
@@ -302,7 +314,6 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         # capable of joining the basis. lines 294 ~ 321 contains this implementation
         k = J.index(old_aux_J[k]) if valid_non_basic_variable_found else None
         return k
-
     # Compute J for the original non-basic variables
     # What doesn't belong to I_star should belong to J
     # Simple as that!
@@ -360,7 +371,7 @@ def _simplex_find_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     A_I_sanitized = _compute_A_I(A, I_sanitized)
     return I_sanitized, A_I_sanitized, sanitized_A, sanitized_b, feasible, iterations_count, debug_info
 
-def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:
+def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, debug = False, cycle_proof = True) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:
     """
     Solves the linear programming minimization problem where:
         A is the matrix of coefficients of the constraints,
@@ -411,7 +422,7 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         # 2. Compute c_hat_J
         c_hat_J = _compute_c_hat_J(π, A, c, J)
         # 3. Find the variable to enter the basis
-        k, c_hat_k_gt_0 = _find_k_who_enters(c_hat_J)
+        k, c_hat_k_gt_0 = _find_k_who_enters(c_hat_J, cycle_proof = cycle_proof)
         # If c_hat_k <= 0, a solution was found
         if not c_hat_k_gt_0:
             solution_found = True
@@ -482,7 +493,7 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
     A_I_star = A_I
     return z_star, x_star, I_star, A_I_star, A, iterations_count, solution_type, debug_info
 
-def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = False) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:    
+def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = False, cycle_proof = True) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int, dict]:    
     """
     Solves the linear programming minimization problem through the 2-phases simplex where:
         A is the matrix of coefficients of the constraints,
@@ -510,13 +521,13 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, I: np.ndarray, debug = 
     c = np.copy(c)
     I = np.copy(I)
     # Find a feasible initial basis
-    I, A_I, A_artificial, b, feasible, iterations_count, debug_info = _simplex_find_feasible_initial_basis(A, b, c, I, debug)
+    I, A_I, A_artificial, b, feasible, iterations_count, debug_info = _simplex_find_feasible_initial_basis(A, b, c, I, debug, cycle_proof = True)
     # If the original problem is infeasible, return the expected values
     if not feasible:
         return 0, np.zeros(A.shape[1]), I, A_I, A, iterations_count, -1, debug_info
     # Otherwise, solve the problem with the feasible initial basis granted:
     # the second phase of the 2-phases simplex method
-    z_star, x_star, I_star, A_I_star, A, iterations_count_second_phase, solution_type, debug_info_second_phase = _simplex_with_feasible_initial_basis(A, b, c, I, debug)
+    z_star, x_star, I_star, A_I_star, A, iterations_count_second_phase, solution_type, debug_info_second_phase = _simplex_with_feasible_initial_basis(A, b, c, I, debug, cycle_proof = cycle_proof)
     # Append the debug information from the second phase to the debug information from the first phase
     debug_info['second phase'] = debug_info_second_phase
     return z_star, x_star, I_star, A_I_star, A, iterations_count + iterations_count_second_phase, solution_type, debug_info
