@@ -64,12 +64,13 @@ def _find_r_to_leave_cycle_proof(
     _, n = A.shape
     columns = iter(set(range(n)) - set([k]))
     ratios = np.where(y_k > 0, B_prime / y_k, np.inf)
+    aux_ratios = np.copy(ratios)
 
     # start lexicographic rule
     minimum_value = np.min(ratios)
-    candidate_indices_to_leave, *_ = np.where(
-        ratios == minimum_value
-    )
+    minimum_values_indices, *_ = np.where(ratios == minimum_value)
+    candidate_indices_to_leave = np.copy(minimum_values_indices)
+
     # as in revised tableau we try to compute r to leave anyway
     # even after an optimal was reached, when this happens, all
     # y_k become leq 0, so ratios we'll become an array of inf
@@ -86,26 +87,23 @@ def _find_r_to_leave_cycle_proof(
     # over complexity and this is simple enough to guarantee the proper
     # execution of our code.
     singleton = len(candidate_indices_to_leave) == 1 or minimum_value == np.inf
-
+    # we can set r to the first element of candidate_indices_to_leave as
+    # if it is a singleton, it will be the only element in the array
+    # but if it is not, r will be updated inside the loop until we find
+    # a singleton set
+    r = candidate_indices_to_leave[0]
     while not singleton:
         c = next(columns)
         y_c = A_I_inv @ A[:, c]
-        # we should restrict next ratios generation to only the rows where ties
-        # happened in the previous iteration
-        aux_ratios = y_c[candidate_indices_to_leave] / y_k[candidate_indices_to_leave]
+        aux_ratios = np.where(y_k > 0, y_c / y_k, np.inf)
         minimum_value = np.min(aux_ratios)
-        # we restrict even more the search, therefore our computational effort
-        # is reduced, retaining the context of previous candidate indices to 
-        # ensure proper filtering
-        candidate_indices_to_leave, *_ = np.array(
-            [candidate_indices_to_leave[np.where(aux_ratios == minimum_value)]]
-        )
-        # then we check if we have a singleton
-        singleton = len(candidate_indices_to_leave) == 1
-    # As our A_I matrix is non-singular, we are guaranteed to find a singleton
-    # so, our candidate_indices_to_leave will have only one element and we can
-    # safely retrieve it as a variable to leave the basis
-    r = candidate_indices_to_leave[0]
+        minimum_values_indices = np.where(aux_ratios == minimum_value)
+        singleton = len(minimum_values_indices) == 1
+        r = candidate_indices_to_leave[np.argmin(aux_ratios)]
+        # As our A_I matrix is non-singular, we are guaranteed to find a singleton
+        # so, the last computed r is guaranteed to come from a singleton set
+        # as the last computed aux_ratios will produce a singleton min
+        # safely retrieve it as a variable to leave the basis
     return r, ratios
 
 def _find_r_to_leave(

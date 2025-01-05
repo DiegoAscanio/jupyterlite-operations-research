@@ -41,20 +41,7 @@ def _compute_c_hat_J(π: np.ndarray, A: np.ndarray, c: np.ndarray, J: list) -> n
     c_hat_J = π.dot(A_J) - c[J]
     return c_hat_J
 
-def _bland_rule_to_find_k_to_enter(c_hat_J) -> np.intp:
-    c_hat_J_gt_zero, *_ = np.where(c_hat_J > 0)
-    if len(c_hat_J_gt_zero) > 0:
-        # returns the leftmost element greater than zero
-        # and by bland's rule, according to the textbook
-        # this prevents cycling
-        return c_hat_J_gt_zero[0]
-    else:
-        # if c_hat_J <= 0, then we have an optimal solution
-        # therefore, the simple argmax from c_hat_J is
-        # enough to inform that the algorithm should stop
-        return np.argmax(c_hat_J)
-
-def _find_k_who_enters(c_hat_J: np.ndarray, cycle_proof = True) -> tuple[np.intp, bool]:
+def _find_k_who_enters(c_hat_J: np.ndarray) -> tuple[np.intp, bool]:
     """
     Finds the index of the variable that enters the basis and returns if
     the simplex method shouuld continue. When c_hat_J[k] <= 0, the method
@@ -65,15 +52,15 @@ def _find_k_who_enters(c_hat_J: np.ndarray, cycle_proof = True) -> tuple[np.intp
         k: the index of the variable that enters the basis.
         proceed_: a boolean indicating if the simplex method should proceed.
     """
-    k: np.intp = np.argmax(c_hat_J) if not cycle_proof else _bland_rule_to_find_k_to_enter(c_hat_J)
+    k: np.intp = np.argmax(c_hat_J)
     return k, c_hat_J[k] > 0
 
-def _find_r_who_leaves(I: list, A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.ndarray, debug = False) -> tuple[np.intp, np.ndarray, bool, dict]:
+def _find_r_who_leaves_cycle_allowed(I: list, A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.ndarray, debug = False) -> tuple[np.intp, np.ndarray, bool, dict]:
     """
     Finds the index of the variable that leaves the basis and returns if
     the simplex method shouuld continue. When all elements of A_k are
     non-positive, the method found an unbounded solution and, therefore,
-    should stop.
+    should stop. NOT CYCLE-PROOF.
     Args:
         I: list of basic variables
         A_I_inv: the inverse of the matrix of the basic variables.
@@ -108,6 +95,139 @@ def _find_r_who_leaves(I: list, A_I_inv: np.ndarray, x_I: np.ndarray, A_k: np.nd
 
     # 6. Return the variable index to leave the basis and if the simplex method should proceed
     return r, y_k, np.any(y_k > 0), debug_info
+
+def _find_r_who_leaves_cycle_proof(
+    I : list,
+    A : np.ndarray,
+    A_I_inv : np.ndarray,
+    B_prime : np.ndarray,
+    y_k : np.ndarray,
+    k : np.intp,
+    debug = False
+) -> tuple[np.intp, np.ndarray, bool, dict]:
+    """
+    Finds the index of the variable that leaves the basis and returns if
+    the simplex method shouuld continue. When all elements of A_k are
+    non-positive, the method found an unbounded solution and, therefore,
+    should stop. CYCLE-PROOF.
+    Args:
+        I: list of basic variables
+        A: the matrix of coefficients of the constraints.
+        A_I_inv: the inverse of the matrix of the basic variables.
+        B_prime: the vector of the right-hand side of the constraints.
+        y_k: the vector of the coefficients of the entering variable.
+        k: the index of the variable that enters the basis.
+    Returns:
+        r: the index of the variable that leaves the basis.
+        y_k: the vector of the coefficients of the entering variable.
+        proceed_: a boolean indicating if the simplex method should proceed.
+                  if y_k[r] <= 0, the solution is unbounded and, therefre,
+                  the method should stop.
+        debug_info: a dictionary with debug information.
+    """
+    debug_info = {}
+    _, n = A.shape
+    columns = iter(set(range(n)) - set([k]))
+    ratios = np.where(y_k > 0, B_prime / y_k, np.inf)
+    aux_ratios = np.copy(ratios)
+
+    # start lexicographic rule
+    minimum_value = np.min(ratios)
+    minimum_values_indices, *_ = np.where(ratios == minimum_value)
+    candidate_indices_to_leave = np.copy(minimum_values_indices)
+
+    # as in revised tableau we try to compute r to leave anyway
+    # even after an optimal was reached, when this happens, all
+    # y_k become leq 0, so ratios we'll become an array of inf
+    # then, candidate_indices we'll have a length of I, as all
+    # ratios are infinity. So that's why we added this or
+    # to the implementation. Not the most elegant solution.
+    # this one would be to refactor main step into a pipeline
+    # where find_r_to_leave would be decorated through a pipeline
+    # function who would receive proceed from _find_k_to_enter as 
+    # a parameter and only runs if proceed is True.
+    # but as we're losing a lot of time trying to prevent cycles
+    # and fixing the bugs that naturally happens when doing so,
+    # we'll leave this solution as it is. We should prefer simplicity
+    # over complexity and this is simple enough to guarantee the proper
+    # execution of our code.
+    singleton = len(candidate_indices_to_leave) == 1 or minimum_value == np.inf
+    # we can set r to the first element of candidate_indices_to_leave as
+    # if it is a singleton, it will be the only element in the array
+    # but if it is not, r will be updated inside the loop until we find
+    # a singleton set
+    r = candidate_indices_to_leave[0]
+    while not singleton:
+        c = next(columns)
+        y_c = A_I_inv @ A[:, c]
+        aux_ratios = np.where(y_k > 0, y_c / y_k, np.inf)
+        minimum_value = np.min(aux_ratios)
+        minimum_values_indices = np.where(aux_ratios == minimum_value)
+        singleton = len(minimum_values_indices) == 1
+        r = candidate_indices_to_leave[np.argmin(aux_ratios)]
+        # As our A_I matrix is non-singular, we are guaranteed to find a singleton
+        # so, the last computed r is guaranteed to come from a singleton set
+        # as the last computed aux_ratios will produce a singleton min
+        # safely retrieve it as a variable to leave the basis
+    # Append debug information
+    if debug:
+        debug_info['description'] = 'Finding the variable that leaves the basis'
+        debug_info['y_k'] = y_k
+        debug_info['ratios'] = ratios
+        debug_info['r'] = r
+        debug_info['I_r'] = I[r]
+    # Return the variable index to leave the basis and if the simplex
+    # method should proceed
+    return r, y_k, np.any(y_k > 0), debug_info
+
+def _find_r_who_leaves(
+    I: list,
+    A_I_inv: np.ndarray,
+    x_I: np.ndarray,
+    A_k: np.ndarray,
+    A : np.ndarray,
+    k: np.intp,
+    debug = False,
+    cycle_proof = True
+) -> tuple[np.intp, np.ndarray, bool, dict]:
+    """
+    Finds the index of the variable that leaves the basis and returns if
+    the simplex method shouuld continue. When all elements of A_k are
+    non-positive, the method found an unbounded solution and, therefore,
+    should stop.
+    Args:
+        I: list of basic variables
+        A_I_inv: the inverse of the matrix of the basic variables.
+        x_I: the vector of the basic variables.
+        A_k: the vector of the coefficients of the entering variable.
+        A: the matrix of coefficients of the constraints.
+        k: the index of the variable that enters the basis.
+        debug: a boolean variable to print the steps of the simplex method.
+        cycle_proof: a boolean variable to indicate if the method should 
+        be cycle-proof or not.
+    Returns:
+        r: the index of the variable that leaves the basis.
+        y_k: the vector of the coefficients of the entering variable.
+        proceed_: a boolean indicating if the simplex method should proceed.
+                  if y_k[r] <= 0, the solution is unbounded and, therefre,
+                  the method should stop.
+        debug_info: a dictionary with debug information.
+    """
+    return _find_r_who_leaves_cycle_proof(
+        I = I,
+        A = A,
+        A_I_inv = A_I_inv,
+        B_prime = x_I,
+        y_k = A_I_inv @ A_k,
+        k = k,
+        debug = debug
+    ) if cycle_proof else _find_r_who_leaves_cycle_allowed(
+        I = I,
+        A_I_inv = A_I_inv,
+        x_I = x_I,
+        A_k = A_k,
+        debug = debug
+    )
 
 def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, list]:
     """
@@ -422,7 +542,7 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
         # 2. Compute c_hat_J
         c_hat_J = _compute_c_hat_J(π, A, c, J)
         # 3. Find the variable to enter the basis
-        k, c_hat_k_gt_0 = _find_k_who_enters(c_hat_J, cycle_proof = cycle_proof)
+        k, c_hat_k_gt_0 = _find_k_who_enters(c_hat_J)
         # If c_hat_k <= 0, a solution was found
         if not c_hat_k_gt_0:
             solution_found = True
@@ -430,7 +550,16 @@ def _simplex_with_feasible_initial_basis(A: np.ndarray, b: np.ndarray, c: np.nda
             solution_type = 1 if np.all(c_hat_J < 0) else 2
             continue # advance to the end of the loop and exit in sequence
         # 4. Find the variable to leave the basis
-        r, y_k, y_k_gt_0, debug_info_from_r_who_leaves = _find_r_who_leaves(I, A_I_inv, x_I, A_J[:, k], debug)
+        r, y_k, y_k_gt_0, debug_info_from_r_who_leaves = _find_r_who_leaves(
+            I = I,
+            A_I_inv = A_I_inv,
+            x_I = x_I,
+            A_k = A_J[:, k],
+            A = A,
+            k = k,
+            debug = debug,
+            cycle_proof = cycle_proof
+        )
         # If y_k_r <= 0, the solution is unbounded
         if not y_k_gt_0:
             solution_found = True
