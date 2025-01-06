@@ -52,9 +52,16 @@ def lexicographic_comparison(a : list | np.ndarray, b: list | np.ndarray) -> int
         raise Exception('Error, arrays must be 1-dimensional only')
     if len(a) != len(b):
         raise Exception('Error, arrays must have the same length')
-    for a_, b_ in zip(a, b):
-        if a_ > b_:
-            return 1
-        elif a_ < b_:
-            return -1
-    return 0
+    a_, b_ = tuple(a), tuple(b)
+    return 1 if a_ > b_ else -1 if a_ < b_ else 0
+
+
+def lexicographic_positive(a : list | np.ndarray) -> int:
+    n = len(a)
+    b = np.zeros(n)
+    return True if lexicographic_comparison(a, b) == 1 else False
+
+def lexicographic_negative(a : list | np.ndarray) -> int:
+    n = len(a)
+    b = np.zeros(n)
+    return True if lexicographic_comparison(a, b) == -1 else False

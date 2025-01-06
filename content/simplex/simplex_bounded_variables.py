@@ -1,7 +1,10 @@
+from re import A
 from typing import Any, Tuple, List
 import numpy as np
 from copy import deepcopy
 import pdb
+
+from utils import lexicographic_comparison, lexicographic_negative, lexicographic_positive
 
 def _compute_x_from_x_I(n, x_I, I, J_1, J_2, lower_bounds, upper_bounds) -> np.ndarray:
     x = np.zeros(n)
@@ -76,7 +79,7 @@ def _find_k_who_enters(
     c_hat_J_2: np.ndarray,
     J_1: list,
     J_2: list
-) -> Tuple[np.intp, np.float64, np.bool_]:
+) -> Tuple[np.intp, np.float64, list, np.bool_]:
     """
     Finds the index of the variable that enters the basis.
     Args:
@@ -87,6 +90,7 @@ def _find_k_who_enters(
     Returns:
         k: the index of the variable that enters the basis.
         c_hat_k: the reduced cost of the variable that enters the basis.
+        J_k: the set where the variable k belongs to.
         proceed: whether the algorithm should proceed.
     """
     # if J_2 is empty we should only consider the reduced costs of J_1
@@ -116,8 +120,9 @@ def _find_k_who_enters(
         better_index = candidate_values.index(better_improvement)
         k = candidate_indices[better_index]
         c_hat_k = better_improvement
+    J_k = J_1 if k in J_1 else J_2
     proceed = c_hat_k > 0
-    return k, c_hat_k, proceed
+    return k, c_hat_k, J_k, proceed
 
 def _compute_γ_1_for_non_basic_entering_from_its_lower_bound(
     I : list,
@@ -192,7 +197,7 @@ def _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
     x_I: np.ndarray,
     lower_bounds: np.ndarray,
     upper_bounds: np.ndarray
-) -> Tuple [ int | None, np.float64 ]:
+) -> Tuple [ int | None, np.float64, np.bool_ ]:
     """
         Computes Δ_k for non-basic variable entering from its lower bound
         that corresponds to the increment that x_k will have when entering
@@ -208,6 +213,7 @@ def _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
             r: the index of the basic variable that leaves the basis
                to its lower bound - if appropriate.
             Δ_k: the value of Δ_k.
+            proceed: if Δ_k is less than infinity.
     """
     r_γ_1, γ_1 = _compute_γ_1_for_non_basic_entering_from_its_lower_bound(I, y_k, x_I, lower_bounds)
     r_γ_2, γ_2 = _compute_γ_2_for_non_basic_entering_from_its_lower_bound(I, y_k, x_I, upper_bounds)
@@ -218,7 +224,7 @@ def _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
     r: int = candidate_indices[
         list(candidate_values).index(Δ_k)
     ]
-    return r, Δ_k
+    return r, Δ_k, Δ_k < np.inf
 
 def _compute_γ_1_for_non_basic_entering_from_its_upper_bound(
     I : list,
@@ -273,7 +279,7 @@ def _compute_Δ_k_for_non_basic_entering_from_its_upper_bound(
     x_I: np.ndarray,
     lower_bounds: np.ndarray,
     upper_bounds: np.ndarray
-) -> Tuple [ int | None, np.float64 ]:
+) -> Tuple [ int | None, np.float64, np.bool_ ]:
     """
         Computes Δ_k for non-basic variable entering from its upper bound
         ---------------------------- k ∈ J_2 ----------------------------
@@ -290,6 +296,7 @@ def _compute_Δ_k_for_non_basic_entering_from_its_upper_bound(
             r: the index of the basic variable that leaves the basis
                to its lower bound - if appropriate.
             Δ_k: the value of Δ_k.
+            proceed: if Δ_k is less than infinity.
     """
     r_γ_1, γ_1 = _compute_γ_1_for_non_basic_entering_from_its_upper_bound(I, y_k, x_I, lower_bounds)
     r_γ_2, γ_2 = _compute_γ_2_for_non_basic_entering_from_its_upper_bound(I, y_k, x_I, upper_bounds)
@@ -300,7 +307,148 @@ def _compute_Δ_k_for_non_basic_entering_from_its_upper_bound(
     r: int = candidate_indices[
         list(candidate_values).index(Δ_k)
     ]
-    return r, Δ_k
+    return r, Δ_k, Δ_k < np.inf
+
+def _basic_variables_degenerate_at_their_lower_bounds(
+    I : list,
+    A : np.ndarray,
+    b : np.ndarray,
+    lower_bounds : np.ndarray
+) -> list:
+    """
+        Returns the basic_variables_degenerate_at_their_lower_bounds set
+        with the indices of the basic variables that are degenerate at
+        their lower bounds.
+        Args:
+            I: the set of indices of the basic variables.
+            A: the matrix of the linear system.
+            b: the right-hand side vector of the linear system.
+            lower_bounds: the lower bounds of the variables.
+        Returns
+            degenerate_in_lower_bounds_indices: the indices of the basic
+            variables that are degenerate at their lower bounds.
+    """
+    basic_variables_values = np.linalg.solve(A[:, I], b)
+    degenerate_in_lower_bounds_indices, *_ = np.where(
+        np.isclose(basic_variables_values, lower_bounds[I])
+    )
+    return list(degenerate_in_lower_bounds_indices)
+_build_s_1_set = _basic_variables_degenerate_at_their_lower_bounds
+
+def _basic_variables_degenerate_at_their_upper_bounds(
+    I : list,
+    A : np.ndarray,
+    b : np.ndarray,
+    upper_bounds : np.ndarray
+) -> list:
+    """
+        Returns the basic_variables_degenerate_at_their_upper_bounds set
+        with the indices of the basic variables that are degenerate at
+        their upper bounds.
+        Args:
+            I: the set of indices of the basic variables.
+            A: the matrix of the linear system.
+            b: the right-hand side vector of the linear system.
+            upper_bounds: the upper bounds of the variables.
+        Returns:
+            degenerate_in_upper_bounds_indices: the indices of the basic
+            variables that are deg
+    """
+    basic_variables_values = np.linalg.solve(A[:, I], b)
+    degenerate_in_upper_bounds_indices, *_ = np.where(
+        np.isclose(basic_variables_values, upper_bounds[I])
+    )
+    return list(degenerate_in_upper_bounds_indices)
+_build_s_2_set = _basic_variables_degenerate_at_their_upper_bounds
+
+def _is_strongly_feasible(
+    A: np.ndarray,
+    b: np.ndarray,
+    lower_bounds: np.ndarray,
+    upper_bounds: np.ndarray,
+    I: list
+) -> bool:
+    """
+        Evaluate if the partition I, J_1, J_2 is strongly feasible.
+        Args:
+            A: the matrix of the linear system.
+            b: the right-hand side vector of the linear system.
+            lower_bounds: the lower bounds of the variables.
+            upper_bounds: the upper bounds of the variables.
+            I: the set of indices of the basic variables.
+            J_1: the set of indices of the non-basic variables that are at their
+                 lower bound.
+            J_2: the set of indices of the non-basic variables that are at their
+                 upper bound.
+        Returns:
+            strongly_feasible: whether the partition I, J_1, J_2 is strongly feasible.
+            (True or False)
+    """
+    A_I = _compute_A_I(A, I)
+    A_I_inv = np.linalg.inv(A_I)
+    degenerate_in_lower_bounds_indices = _basic_variables_degenerate_at_their_lower_bounds(I, A, b, lower_bounds)
+    degenerate_in_upper_bounds_indices = _basic_variables_degenerate_at_their_upper_bounds(I, A, b, upper_bounds)
+    # the partition I, J_1, J_2 is strongly feasible if and only if
+    # degenerate basic varibles at their lower bounds are strictly
+    # lexico-positive
+    strongly_feasible = np.allclose(
+        list(
+            map(
+                lambda x: lexicographic_positive(x),
+                A_I_inv[degenerate_in_lower_bounds_indices, :]
+            )
+        ), True
+    )
+    # and if the degenerate basic variables at their upper bounds are
+    # strictly lexico-negative
+    strongly_feasible = strongly_feasible and np.allclose(
+        list(
+            map(
+                lambda x: lexicographic_negative(x),
+                A_I_inv[degenerate_in_upper_bounds_indices, :]
+            )
+        ), True
+    )
+
+    return strongly_feasible
+
+def _find_r_to_leave_for_k_entering_from_lower_bound_cycle_proof(
+    S_1 : list,
+    S_2 : list,
+    y_k : np.ndarray,
+    A_I_inv : np.ndarray
+) -> int | None:
+    degenerate_basic_variables = list(set(S_1) | set(S_2))
+    r_candidates_to_leave = A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
+    lexicographic_rule = np.array([
+        tuple(row) for row in r_candidates_to_leave
+    ]) # tuples in python are already lexicographically ordered when told to
+    sorted_indices = np.argsort(lexicographic_rule)
+    
+    lazy_iterator = iter(r_candidates_to_leave[sorted_indices])
+    # as we sorted our candidates and made an iterator out of them
+    # r is the first (next or None) element in our iterator
+    return next(lazy_iterator, None)
+
+def _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
+    S_1 : list,
+    S_2 : list,
+    y_k : np.ndarray,
+    A_I_inv : np.ndarray
+) -> int | None:
+    degenerate_basic_variables = list(set(S_1) | set(S_2))
+    r_candidates_to_leave = A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
+    lexicographic_rule = np.array([
+        tuple(row) for row in r_candidates_to_leave
+    ]) # tuples in python are already lexicographically ordered when told to
+    sorted_indices = np.argsort(lexicographic_rule)
+    
+    # now we're interested at the maximum value of the lexicographically ordered
+    # so, we reverse the order of r_candidates_to_leave after sorting
+    lazy_iterator = iter(r_candidates_to_leave[sorted_indices][::-1])
+    # as we sorted our candidates and made an iterator out of them
+    # r is the first (next or None) element in our iterator
+    return next(lazy_iterator, None)
 
 def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, list]:
     """
@@ -389,3 +537,156 @@ def _build_initial_tableau(
 
     # the tableau is now built
     return tableau
+
+def _simplex_step_1(
+    T : np.ndarray, 
+    I : list,
+    J_1 : list,
+    J_2 : list
+) -> Tuple[np.intp, np.float64, list, np.bool_]:
+    """
+    Executes the first step of the simplex algorithm for bounded variables.
+    Args:
+    T : the tableau of the linear system.
+    I : the set of indices of the basic variables.
+    J_1 : the set of indices of the non-basic variables that are at their
+    J_2 : the set of indices of the non-basic variables that are at their
+    Returns:
+    k : the index of the variable that enters the basis.
+    c_hat_k : the reduced cost of the variable that enters the basis.
+    k_set: the set where the variable k belongs to.
+    proceed : whether the algorithm should proceed.
+    """
+    c_hat_J_1 = T[0, J_1]
+    c_hat_J_2 = T[0, J_2]
+    k, c_hat_k, k_set, proceed = _find_k_who_enters(
+        c_hat_J_1, c_hat_J_2, J_1, J_2
+    )
+
+    return k, c_hat_k, k_set, proceed
+
+def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, upper_bounds):
+    # necessary variables
+    A = np.copy(T[1:, :-1])
+    A_I_inv = A[:, I]
+    b = np.copy(T[1:, -1])
+    b_hat = np.copy(T[1:, -1])
+    c_hat_k = T[0, k]
+    z_hat = T[0, -1]
+    y_k = A_I_inv.dot(A[:, k])
+
+    # 1. compute r, Δ_k
+    r, Δ_k, proceed = _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
+        I, k, y_k, T[1:, -1], lower_bounds, upper_bounds
+    )
+    # 2. early return if Δ_k is infinite and then stop the algorithm
+    #    as the problem is unbounded
+    if not proceed:
+        return T, I, J_1, J_2, False
+
+    # 3. update variables that will hold this value till the end of the iteration
+    x_k = lower_bounds[k] + Δ_k
+    b_hat = b_hat - y_k * Δ_k
+    z_hat = z_hat - c_hat_k * Δ_k
+    # update x_I (b_hat) and z_hat at the tableau
+    T[1:, -1] = b_hat
+    T[0, -1] = z_hat
+
+    # 3.1 early return if Δ_k is γ_3 (u_k - l_k) as no modifications will be made
+    #     at the basis
+    if Δ_k == (upper_bounds[k] - lower_bounds[k]):
+        # remove k from J_1 and add it to J_2
+        J_1 = list(set(J_1) - set([k]))
+        J_2 = list(set(J_2) | set([k]))
+        # return the updated tableau
+        return T, I, J_1, J_2, True
+
+    # 4. check if candidates r and k produces a strongly feasible partition
+    candidate_I = I.copy()
+    candidate_J_1 = J_1.copy()
+    candidate_I, candidate_J_1 = _update_I_and_J(candidate_I, candidate_J_1, k, r)
+
+    # 5. if the partition is not strongly feasible, we should find the
+    #    index of the basic variable that leaves the basis through the
+    #    lexico-rule cycle-proof method
+    if not _is_strongly_feasible(
+        A,
+        b,
+        lower_bounds,
+        upper_bounds,
+        candidate_I
+        ):
+        S_1 = _build_s_1_set(candidate_I, A, b, lower_bounds)
+        S_2 = _build_s_2_set(candidate_I, A, b, upper_bounds)
+        r = _find_r_to_leave_for_k_entering_from_lower_bound_cycle_proof(
+            S_1, S_2, y_k, A_I_inv
+        ) # the lexico-rule will properly select a valid r to leave
+    # 6. Now that we have a valid r, we can update the basis
+    I, J_1 = _update_I_and_J(I, J_1, k, r)
+    # 7. update b_hat at r index to reflect the new value of x_k that just
+    #    entered the basis
+    b_hat[r] = x_k
+    # 8. update the tableau with the new values of b_hat
+    T[1:, -1] = b_hat
+    # return the updated tableau
+    return T, I, J_1, J_2, True
+
+pipeline_memory = {
+}
+
+def _store_at_pipeline_memory(T, I, J_1, J_2):
+    pipeline_memory["T"] = T
+    pipeline_memory["I"] = I
+    pipeline_memory["J_1"] = J_1
+    pipeline_memory["J_2"] = J_2
+
+def _retrieve_from_pipeline_memory():
+    return pipeline_memory["T"], pipeline_memory["I"], pipeline_memory["J_1"], pipeline_memory["J_2"]
+
+def _simplex_step_2_pipeline(proceed, *args, **kwargs):
+    if proceed:
+        T, I, J_1, J_2, proceed = _simplex_step_2_k_enters_from_lower_bounds(*args, **kwargs)
+        _store_at_pipeline_memory(T, I, J_1, J_2)
+        return T, I, J_1, J_2, proceed
+    return *_retrieve_from_pipeline_memory(), False
+
+def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, upper_bounds):
+    return *_retrieve_from_pipeline_memory(), False
+
+def _simplex_step_3_pipeline(proceed, *args, **kwargs):
+    if proceed:
+        T, I, J_1, J_2, proceed = _simplex_step_3_k_enters_from_upper_bounds(*args, **kwargs)
+        _store_at_pipeline_memory(T, I, J_1, J_2)
+        return T, I, J_1, J_2, proceed
+    return *_retrieve_from_pipeline_memory(), False
+
+def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
+    T = _build_initial_tableau(
+        A, b, c, I, J_1, J_2, lower_bounds, upper_bounds
+    )
+    # store values at pipeline memory for the case that the I basis is already
+    # an optimal basis
+    _store_at_pipeline_memory(T, I, J_1, J_2)
+
+    # main loop
+    solution_found = False
+    while not solution_found:
+        # 1. rebuild the step functions map to reflect changes made at the non-basic
+        # variables set on previous iterations
+        step_functions = {
+            tuple(J_1): _simplex_step_2_pipeline,
+            tuple(J_2): _simplex_step_3_pipeline
+        }
+        # 2. find k non basic candidate to enter the basis
+        k, c_hat_k, k_set, proceed = _simplex_step_1(T, I, J_1, J_2)
+        # 3. update solution_found flag
+        solution_found = not proceed
+        # 4. build args for the next step
+        args = (I, J_1, J_2, k, T, lower_bounds, upper_bounds)
+        # 5. call next step through the pipeline (to avoid computing r and Δ_k
+        #    if a solution was found in step 1)
+        T, I, J_1, J_2, proceed = step_functions[
+            tuple(k_set)
+        ](proceed, *args)
+        # 6. update solution_found flag again
+        solution_found = not proceed
