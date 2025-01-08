@@ -1,0 +1,9 @@
+Simplex duas fases:
+
+1. Implementar regra lexicográfica na remoção de variáveis da base para prevenir ciclos
+2. Implementar tecnicas de remoção de variáveis artificiais pós primeira fase do simplex
+
+Simplex variáveis limitadas:
+
+1.  Implementar regra lexicográfica para remoção de variáveis da base levando em consideração os conjuntos J_1 e J_2
+2. Orquestrar o algoritmo completo.
