@@ -119,9 +119,9 @@ def _find_k_who_enters(
         better_index = candidate_values.index(better_improvement)
         k = candidate_indices[better_index]
         c_hat_k = better_improvement
-    J_k = J_1 if k in J_1 else J_2
+    J_k = J_1 if c_hat_k in c_hat_J_1 else J_2
     proceed = c_hat_k > 0
-    return k, c_hat_k, J_k, proceed
+    return J_k[k], c_hat_k, J_k, proceed
 
 def _compute_γ_1_for_non_basic_entering_from_its_lower_bound(
     I : list,
@@ -424,16 +424,26 @@ def _find_r_to_leave_for_k_entering_from_lower_bound_cycle_proof(
     A_I_inv : np.ndarray
 ) -> int | None:
     degenerate_basic_variables = list(set(S_1) | set(S_2))
-    r_candidates_to_leave = A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
-    lexicographic_rule = np.array([
-        tuple(row) for row in r_candidates_to_leave
-    ]) # tuples in python are already lexicographically ordered when told to
-    sorted_indices = np.argsort(lexicographic_rule)
-    
-    lazy_iterator = iter(r_candidates_to_leave[sorted_indices])
-    # as we sorted our candidates and made an iterator out of them
-    # r is the first (next or None) element in our iterator
-    return next(lazy_iterator, None)
+    # we need to handle it as list to sort appropriately
+    r_candidates_to_leave: list = list(
+        map(
+            lambda x: tuple(x),
+            A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
+        )
+    )
+
+    # we make a copy of r_candidates_to_leave - a list of tuples
+    lexicographic_rule = r_candidates_to_leave.copy()
+    # and sort the copy, as tuple sorting in python is lexicographic
+    lexicographic_rule.sort()
+
+    # now we're interested at the minimum value of the lexicographically ordered
+    # so the first element of lexicographic_rule is the one we're interested at
+    lexicographically_minimum_row = lexicographic_rule[0]
+
+    # the index is the index of r_candidates_to_leave that contains the minimum
+    # row
+    return r_candidates_to_leave.index(lexicographically_minimum_row)
 
 def _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
     S_1 : list,
@@ -442,18 +452,26 @@ def _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
     A_I_inv : np.ndarray
 ) -> int | None:
     degenerate_basic_variables = list(set(S_1) | set(S_2))
-    r_candidates_to_leave = A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
-    lexicographic_rule = np.array([
-        tuple(row) for row in r_candidates_to_leave
-    ]) # tuples in python are already lexicographically ordered when told to
-    sorted_indices = np.argsort(lexicographic_rule)
-    
+    # we need to handle it as list to sort appropriately
+    r_candidates_to_leave: list = list(
+        map(
+            lambda x: tuple(x),
+            A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
+        )
+    )
+
+    # we make a copy of r_candidates_to_leave - a list of tuples
+    lexicographic_rule = r_candidates_to_leave.copy()
+    # and sort the copy, as tuple sorting in python is lexicographic
+    lexicographic_rule.sort()
+
     # now we're interested at the maximum value of the lexicographically ordered
-    # so, we reverse the order of r_candidates_to_leave after sorting
-    lazy_iterator = iter(r_candidates_to_leave[sorted_indices][::-1])
-    # as we sorted our candidates and made an iterator out of them
-    # r is the first (next or None) element in our iterator
-    return next(lazy_iterator, None)
+    # so the last element of lexicographic_rule is the one we're interested at
+    lexicographically_maximum_row = lexicographic_rule[-1]
+
+    # the index is the index of r_candidates_to_leave that contains the minimum
+    # row
+    return r_candidates_to_leave.index(lexicographically_maximum_row)
 
 def _remove_from_lower_bounds_and_add_to_upper_bounds(
     lower_bounds_set: list, upper_bounds_set: list, k: np.intp
@@ -465,10 +483,8 @@ def _remove_from_lower_bounds_and_add_to_upper_bounds(
             their lower bound.
         upper_bounds_set: the set of indices of the non-basic variables that are at
             their upper bound.
-        k: the index of the variable that leaved the basis to enter its upper_bounds
-            after J_1 and I were updated through _update_I_and_J. So we expect here
-            that the basic variable leaves the basis and then this method should be
-            executed when it is necessary to make it non-basic at its upper bound.
+        k: the variable that should leave lower_bounds_set and enter 
+            upper_bounds_set.
     Returns:
         lower_bounds_set: the updated set of indices of the non-basic variables at
             their lower bounds.
@@ -490,10 +506,7 @@ def _remove_from_upper_bounds_and_add_to_lower_bounds(
             their lower bound.
         upper_bounds_set: the set of indices of the non-basic variables that are at
             their upper bound.
-        k: the index of the variable that leaved the basis to enter its lower_bounds
-            after J_2 and I were updated through _update_I_and_J. So we expect here
-            that the basic variable leaves the basis and then this method should be
-            executed when it is necessary to make it non-basic at its lower bound.
+        k: the variable that should leave upper_bounds and enter lower_bounds.
     Returns:
         lower_bounds_set: the updated set of indices of the non-basic variables at
             their lower bounds.
@@ -519,6 +532,7 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
     """
     I = deepcopy(I)
     J = deepcopy(J)
+
     # as we have two sets of non-basic variables, indices should be handled
     # in a different way that we did in the previous methods
     # we'll use to_enter_value and to_enter_indices as they are different
@@ -527,6 +541,7 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
     to_enter_value = k
 
     to_exit = deepcopy(I[r])
+
     I[r] = to_enter_value
     J[to_enter_index] = to_exit
     return I, J
@@ -691,7 +706,7 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 3.1 early return if Δ_k is γ_3 (u_k - l_k) as no modifications will be made
     #     at the basis
     if Δ_k == (upper_bounds[k] - lower_bounds[k]):
-        # remove k from lowe_bounds and add it to upper_bounds
+        # remove k from lower_bounds and add it to upper_bounds
         J_1, J_2 = _remove_from_lower_bounds_and_add_to_upper_bounds(J_1, J_2, k)
         # return the updated tableau
         return T, I, J_1, J_2, True
