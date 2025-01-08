@@ -1,10 +1,9 @@
-from re import A
 from typing import Any, Tuple, List
 import numpy as np
 from copy import deepcopy
 import pdb
 
-from utils import lexicographic_comparison, lexicographic_negative, lexicographic_positive
+from utils import lexicographic_negative, lexicographic_positive
 
 def _compute_x_from_x_I(n, x_I, I, J_1, J_2, lower_bounds, upper_bounds) -> np.ndarray:
     x = np.zeros(n)
@@ -197,7 +196,7 @@ def _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
     x_I: np.ndarray,
     lower_bounds: np.ndarray,
     upper_bounds: np.ndarray
-) -> Tuple [ int | None, np.float64, np.bool_ ]:
+) -> Tuple [ int | None, np.float64, np.bool_, int | None ]:
     """
         Computes Δ_k for non-basic variable entering from its lower bound
         that corresponds to the increment that x_k will have when entering
@@ -211,9 +210,11 @@ def _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
             upper_bounds: the upper bounds of the variables.
         Returns:
             r: the index of the basic variable that leaves the basis
-               to its lower bound - if appropriate.
             Δ_k: the value of Δ_k.
             proceed: if Δ_k is less than infinity.
+            bound: the bound to which the basic variable leaves the basis.
+                   0 for lower bound, 1 for upper bound.
+                   None if Δ_k is γ_3
     """
     r_γ_1, γ_1 = _compute_γ_1_for_non_basic_entering_from_its_lower_bound(I, y_k, x_I, lower_bounds)
     r_γ_2, γ_2 = _compute_γ_2_for_non_basic_entering_from_its_lower_bound(I, y_k, x_I, upper_bounds)
@@ -224,7 +225,8 @@ def _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
     r: int = candidate_indices[
         list(candidate_values).index(Δ_k)
     ]
-    return r, Δ_k, Δ_k < np.inf
+    bound = 0 if Δ_k == γ_1 else 1 if Δ_k == γ_2 else None
+    return r, Δ_k, Δ_k < np.inf, bound
 
 def _compute_γ_1_for_non_basic_entering_from_its_upper_bound(
     I : list,
@@ -279,7 +281,7 @@ def _compute_Δ_k_for_non_basic_entering_from_its_upper_bound(
     x_I: np.ndarray,
     lower_bounds: np.ndarray,
     upper_bounds: np.ndarray
-) -> Tuple [ int | None, np.float64, np.bool_ ]:
+) -> Tuple [ int | None, np.float64, np.bool_, int | None ]:
     """
         Computes Δ_k for non-basic variable entering from its upper bound
         ---------------------------- k ∈ J_2 ----------------------------
@@ -297,6 +299,8 @@ def _compute_Δ_k_for_non_basic_entering_from_its_upper_bound(
                to its lower bound - if appropriate.
             Δ_k: the value of Δ_k.
             proceed: if Δ_k is less than infinity.
+            bound: the bound to which the basic variable leaves the basis.
+            1 for upper bound, 0 for lower bound, None if Δ_k is γ_3
     """
     r_γ_1, γ_1 = _compute_γ_1_for_non_basic_entering_from_its_upper_bound(I, y_k, x_I, lower_bounds)
     r_γ_2, γ_2 = _compute_γ_2_for_non_basic_entering_from_its_upper_bound(I, y_k, x_I, upper_bounds)
@@ -307,7 +311,8 @@ def _compute_Δ_k_for_non_basic_entering_from_its_upper_bound(
     r: int = candidate_indices[
         list(candidate_values).index(Δ_k)
     ]
-    return r, Δ_k, Δ_k < np.inf
+    bound = 0 if Δ_k == γ_1 else 1 if Δ_k == γ_2 else None
+    return r, Δ_k, Δ_k < np.inf, bound
 
 def _basic_variables_degenerate_at_their_lower_bounds(
     I : list,
@@ -450,6 +455,56 @@ def _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
     # r is the first (next or None) element in our iterator
     return next(lazy_iterator, None)
 
+def _remove_from_lower_bounds_and_add_to_upper_bounds(
+    lower_bounds_set: list, upper_bounds_set: list, k: np.intp
+) -> tuple[list, list]:
+    """
+    Updates the sets of non-basic variables at their lower and upper bounds.
+    Args:
+        lower_bounds_set: the set of indices of the non-basic variables that are at
+            their lower bound.
+        upper_bounds_set: the set of indices of the non-basic variables that are at
+            their upper bound.
+        k: the index of the variable that leaved the basis to enter its upper_bounds
+            after J_1 and I were updated through _update_I_and_J. So we expect here
+            that the basic variable leaves the basis and then this method should be
+            executed when it is necessary to make it non-basic at its upper bound.
+    Returns:
+        lower_bounds_set: the updated set of indices of the non-basic variables at
+            their lower bounds.
+        upper_bounds_set: the updated set of indices of the non-basic variables at
+            their upper bounds.
+    """
+    leaving_variable = lower_bounds_set[k]
+    lower_bounds_set = list(set(lower_bounds_set) - {leaving_variable})
+    upper_bounds_set = list(set(upper_bounds_set) | {leaving_variable})
+    return lower_bounds_set, upper_bounds_set
+
+def _remove_from_upper_bounds_and_add_to_lower_bounds(
+    lower_bounds_set: list, upper_bounds_set: list, k: np.intp
+) -> tuple[list, list]:
+    """
+    Updates the sets of non-basic variables at their lower and upper bounds.
+    Args:
+        lower_bounds_set: the set of indices of the non-basic variables that are at
+            their lower bound.
+        upper_bounds_set: the set of indices of the non-basic variables that are at
+            their upper bound.
+        k: the index of the variable that leaved the basis to enter its lower_bounds
+            after J_2 and I were updated through _update_I_and_J. So we expect here
+            that the basic variable leaves the basis and then this method should be
+            executed when it is necessary to make it non-basic at its lower bound.
+    Returns:
+        lower_bounds_set: the updated set of indices of the non-basic variables at
+            their lower bounds.
+        upper_bounds_set: the updated set of indices of the non-basic variables at
+            their upper bounds.
+    """
+    leaving_variable = upper_bounds_set[k]
+    upper_bounds_set = list(set(upper_bounds_set) - {leaving_variable})
+    lower_bounds_set = list(set(lower_bounds_set) | {leaving_variable})
+    return lower_bounds_set, upper_bounds_set
+
 def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, list]:
     """
     Updates the sets of basic and non-basic variables.
@@ -464,10 +519,16 @@ def _update_I_and_J(I: list, J: list, k: np.intp, r: np.intp) -> tuple[list, lis
     """
     I = deepcopy(I)
     J = deepcopy(J)
-    to_enter = deepcopy(J[k])
+    # as we have two sets of non-basic variables, indices should be handled
+    # in a different way that we did in the previous methods
+    # we'll use to_enter_value and to_enter_indices as they are different
+    # entities now
+    to_enter_index = J.index(k)
+    to_enter_value = k
+
     to_exit = deepcopy(I[r])
-    I[r] = to_enter
-    J[k] = to_exit
+    I[r] = to_enter_value
+    J[to_enter_index] = to_exit
     return I, J
 
 def _build_initial_tableau(
@@ -538,6 +599,29 @@ def _build_initial_tableau(
     # the tableau is now built
     return tableau
 
+def _pivot_tableau(T, r, k):
+    """
+    Pivots the tableau T.
+    Args:
+        T: the tableau of the linear system.
+        r: the index of the variable that leaves the basis.
+        k: the index of the variable that enters the basis.
+    Returns:
+        T: the pivoted tableau.
+    """
+    r = r + 1 # this is needed as the first row of T is the cost row
+    pivot_area = T[:, :-1]
+    m, _ = pivot_area.shape
+    pivot_element = pivot_area[r, k]
+    # divide the pivot row by the pivot element
+    pivot_area[r, :] = pivot_area[r, :] / pivot_element
+    # apply linear combination to the other rows
+    rows = list(range(r)) + list(range(r + 1, m))
+    for row in rows:
+        pivot_area[row,:] -= pivot_area[row,k] * pivot_area[r, :]
+    return T
+
+
 def _simplex_step_1(
     T : np.ndarray, 
     I : list,
@@ -565,6 +649,18 @@ def _simplex_step_1(
 
     return k, c_hat_k, k_set, proceed
 
+pipeline_memory = {
+}
+
+def _store_at_pipeline_memory(T, I, J_1, J_2):
+    pipeline_memory["T"] = T
+    pipeline_memory["I"] = I
+    pipeline_memory["J_1"] = J_1
+    pipeline_memory["J_2"] = J_2
+
+def _retrieve_from_pipeline_memory():
+    return pipeline_memory["T"], pipeline_memory["I"], pipeline_memory["J_1"], pipeline_memory["J_2"]
+
 def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, upper_bounds):
     # necessary variables
     A = np.copy(T[1:, :-1])
@@ -576,7 +672,7 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
     y_k = A_I_inv.dot(A[:, k])
 
     # 1. compute r, Δ_k
-    r, Δ_k, proceed = _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
+    r, Δ_k, proceed, bound = _compute_Δ_k_for_non_basic_entering_from_its_lower_bound(
         I, k, y_k, T[1:, -1], lower_bounds, upper_bounds
     )
     # 2. early return if Δ_k is infinite and then stop the algorithm
@@ -595,9 +691,8 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 3.1 early return if Δ_k is γ_3 (u_k - l_k) as no modifications will be made
     #     at the basis
     if Δ_k == (upper_bounds[k] - lower_bounds[k]):
-        # remove k from J_1 and add it to J_2
-        J_1 = list(set(J_1) - set([k]))
-        J_2 = list(set(J_2) | set([k]))
+        # remove k from lowe_bounds and add it to upper_bounds
+        J_1, J_2 = _remove_from_lower_bounds_and_add_to_upper_bounds(J_1, J_2, k)
         # return the updated tableau
         return T, I, J_1, J_2, True
 
@@ -623,25 +718,23 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
         ) # the lexico-rule will properly select a valid r to leave
     # 6. Now that we have a valid r, we can update the basis
     I, J_1 = _update_I_and_J(I, J_1, k, r)
+    # 6.1 and then update the sets of non-basic variables at their bounds
+    # considering the bound that r leaved to
+    if bound == 1: # r leaved to upper bounds
+        J_1, J_2 = _remove_from_lower_bounds_and_add_to_upper_bounds(J_1, J_2, k)
+    # else, r leaved to lower bounds and the previous I_and_J update already
+    # took care of the bounds
+
     # 7. update b_hat at r index to reflect the new value of x_k that just
     #    entered the basis
     b_hat[r] = x_k
     # 8. update the tableau with the new values of b_hat
     T[1:, -1] = b_hat
+    # 9. pivot the tableau at the k-th column and r-th row
+    T = _pivot_tableau(T, r, k)
     # return the updated tableau
     return T, I, J_1, J_2, True
 
-pipeline_memory = {
-}
-
-def _store_at_pipeline_memory(T, I, J_1, J_2):
-    pipeline_memory["T"] = T
-    pipeline_memory["I"] = I
-    pipeline_memory["J_1"] = J_1
-    pipeline_memory["J_2"] = J_2
-
-def _retrieve_from_pipeline_memory():
-    return pipeline_memory["T"], pipeline_memory["I"], pipeline_memory["J_1"], pipeline_memory["J_2"]
 
 def _simplex_step_2_pipeline(proceed, *args, **kwargs):
     if proceed:
@@ -651,7 +744,78 @@ def _simplex_step_2_pipeline(proceed, *args, **kwargs):
     return *_retrieve_from_pipeline_memory(), False
 
 def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, upper_bounds):
-    return *_retrieve_from_pipeline_memory(), False
+    # necessary variables
+    A = np.copy(T[1:, :-1])
+    A_I_inv = A[:, I]
+    b = np.copy(T[1:, -1])
+    b_hat = np.copy(T[1:, -1])
+    c_hat_k = T[0, k]
+    z_hat = T[0, -1]
+    y_k = A_I_inv.dot(A[:, k])
+
+    # 1. compute r, Δ_k
+    r, Δ_k, proceed, bound = _compute_Δ_k_for_non_basic_entering_from_its_upper_bound(
+        I, k, y_k, T[1:, -1], lower_bounds, upper_bounds
+    )
+    # 2. early return if Δ_k is infinite and then stop the algorithm
+    #    as the problem is unbounded
+    if not proceed:
+        return T, I, J_1, J_2, False
+
+    # 3. update variables that will hold this value till the end of the iteration
+    x_k = upper_bounds[k] - Δ_k
+    b_hat = b_hat + y_k * Δ_k
+    z_hat = z_hat + c_hat_k * Δ_k
+    # update x_I (b_hat) and z_hat at the tableau
+    T[1:, -1] = b_hat
+    T[0, -1] = z_hat
+
+    # 3.1 early return if Δ_k is γ_3 (u_k - l_k) as no modifications will be made
+    #     at the basis
+    if Δ_k == (upper_bounds[k] - lower_bounds[k]):
+        # remove k from upper_bounds and add it to lower_bounds
+        J_1, J_2 = _remove_from_upper_bounds_and_add_to_lower_bounds(J_1, J_2, k)
+        # return the updated tableau
+        return T, I, J_1, J_2, True
+
+    # 4. check if candidates r and k produces a strongly feasible partition
+    candidate_I = I.copy()
+    candidate_J_2 = J_2.copy()
+    candidate_I, candidate_J_2 = _update_I_and_J(candidate_I, candidate_J_2, k, r)
+
+    # 5. if the partition is not strongly feasible, we should find the
+    #    index of the basic variable that leaves the basis through the
+    #    lexico-rule cycle-proof method
+    if not _is_strongly_feasible(
+        A,
+        b,
+        lower_bounds,
+        upper_bounds,
+        candidate_I
+        ):
+        S_1 = _build_s_1_set(candidate_I, A, b, lower_bounds)
+        S_2 = _build_s_2_set(candidate_I, A, b, upper_bounds)
+        r = _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
+            S_1, S_2, y_k, A_I_inv
+        ) # the lexico-rule will properly select a valid r to leave
+    # 6. Now that we have a valid r, we can update the basis
+    I, J_2 = _update_I_and_J(I, J_2, k, r)
+    # 6.1 and then update the sets of non-basic variables at their bounds
+    # considering the bound that r leaved to
+    if bound == 0: # r leaved to lower
+        J_1, J_2 = _remove_from_upper_bounds_and_add_to_lower_bounds(J_1, J_2, k)
+    # else, r leaved to upper bounds and the previous I_and_J update already
+    # took care of the bounds
+
+    # 7. update b_hat at r index to reflect the new value of x_k that just
+    #    entered the basis
+    b_hat[r] = x_k
+    # 8. update the tableau with the new values of b_hat
+    T[1:, -1] = b_hat
+    # 9. pivot the tableau at the k-th column and r-th row
+    T = _pivot_tableau(T, r, k)
+    # return the updated tableau
+    return T, I, J_1, J_2, True
 
 def _simplex_step_3_pipeline(proceed, *args, **kwargs):
     if proceed:
@@ -661,6 +825,7 @@ def _simplex_step_3_pipeline(proceed, *args, **kwargs):
     return *_retrieve_from_pipeline_memory(), False
 
 def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
+    _, n = A.shape
     T = _build_initial_tableau(
         A, b, c, I, J_1, J_2, lower_bounds, upper_bounds
     )
@@ -670,6 +835,9 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
 
     # main loop
     solution_found = False
+    optimal = False
+    unbouded = False
+    iterations = 0
     while not solution_found:
         # 1. rebuild the step functions map to reflect changes made at the non-basic
         # variables set on previous iterations
@@ -679,14 +847,36 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
         }
         # 2. find k non basic candidate to enter the basis
         k, c_hat_k, k_set, proceed = _simplex_step_1(T, I, J_1, J_2)
+        # 2.1 set optimal flag if optimal solution was found
+        optimal = not proceed
         # 3. update solution_found flag
         solution_found = not proceed
         # 4. build args for the next step
         args = (I, J_1, J_2, k, T, lower_bounds, upper_bounds)
+        print(f'Iteration {iterations}')
+        print("I, J_1, J_2, k, T, lower_bounds, upper_bounds")
+        print(args)
+        print()
         # 5. call next step through the pipeline (to avoid computing r and Δ_k
         #    if a solution was found in step 1)
         T, I, J_1, J_2, proceed = step_functions[
             tuple(k_set)
         ](proceed, *args)
+        # 5.1 set unbounded flag if unbounded solution was found
+        unbouded = not proceed
         # 6. update solution_found flag again
         solution_found = not proceed
+        # 7. update iterations counter
+        iterations += 1
+    # 7. evaluate solution found
+    solution_type = None
+    if optimal:
+        solution_type = 1 if c_hat_k != 0 else 2
+    elif unbouded:
+        solution_type = 3
+    # 8. return final values
+    I_star = I
+    z_star = T[0, -1]
+    x_star = np.zeros(n)
+    x_star[I_star] = T[1:, -1]
+    return z_star, x_star, I_star, solution_type, iterations
