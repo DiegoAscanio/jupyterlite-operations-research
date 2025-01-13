@@ -923,5 +923,7 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
     I_star = I
     z_star = T[0, -1]
     x_star = np.zeros(n)
+    x_star[J_1] = lower_bounds[J_1]
+    x_star[J_2] = upper_bounds[J_2]
     x_star[I_star] = T[1:, -1]
     return z_star, x_star, I_star, solution_type, iterations
