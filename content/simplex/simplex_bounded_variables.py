@@ -92,33 +92,57 @@ def _find_k_who_enters(
         J_k: the set where the variable k belongs to.
         proceed: whether the algorithm should proceed.
     """
-    # if J_2 is empty we should only consider the reduced costs of J_1
-    if len(J_2) == 0:
-        k = np.argmax(
-            np.where(c_hat_J_1 > 0, c_hat_J_1, -np.inf)
-        )
-        c_hat_k = c_hat_J_1[k]
-    # elif J_1 is empty we should only consider the reduced costs of J_2
-    elif len(J_1) == 0:
-        k = np.argmax(
-            np.where(c_hat_J_2 < 0, c_hat_J_2, np.inf)
-        )
-        c_hat_k = c_hat_J_2[k]
-    # otherwise we should consider the reduced costs of both J_1 and J_2
-    # and choose the one with the highest reduced cost
-    else:
+    c_hat_k = np.float64(0)
+    k = 0 # just to initialize
+    # an aux_c_hat_J_1 with -infinities where c_hat_J_1 is leq 0
+    aux_c_hat_J_1 = c_hat_J_1[np.where(c_hat_J_1 > 0)]
+    # an aux_c_hat_J_2 with infinities where c_hat_J_2 is geq 0
+    aux_c_hat_J_2 = c_hat_J_2[np.where(c_hat_J_2 < 0)]
+
+    # ok, let's remake our logic
+
+    if len(aux_c_hat_J_1) > 0 and len(aux_c_hat_J_2) > 0:
         k_1 = np.argmax(
-            np.where(c_hat_J_1 > 0, c_hat_J_1, -np.inf)
+            aux_c_hat_J_1
         )
+        # then update k_1 to reflect the actual index in J_1
+        # properly
+        k_1 = list(c_hat_J_1).index(aux_c_hat_J_1[k_1])
+
         k_2 = np.argmax(
-            np.where(c_hat_J_2 < 0, c_hat_J_2, -np.inf)
+            aux_c_hat_J_2
         )
+        # then update k_2 to reflect the actual index in J_2
+        # properly
+        k_2 = list(c_hat_J_2).index(aux_c_hat_J_2[k_2])
+
+        # these aux_c_hat_J were created as loop prevention measures
+        # then the algorithm should follow as originally intended
         candidate_indices = [k_1, k_2]
         candidate_values = [c_hat_J_1[k_1], -c_hat_J_2[k_2]]
         better_improvement = np.max(candidate_values)
         better_index = candidate_values.index(better_improvement)
         k = candidate_indices[better_index]
         c_hat_k = better_improvement
+    elif len(aux_c_hat_J_1) > 0:
+        # if J_2 is empty we should only consider the reduced costs of J_1
+        k = np.argmax(
+            aux_c_hat_J_1
+        )
+        # then update k to reflect the actual index in J_1
+        # properly
+        k = list(c_hat_J_1).index(aux_c_hat_J_1[k])
+        c_hat_k = c_hat_J_1[k]
+    elif len(aux_c_hat_J_2) > 0:
+        # if J_1 is empty we should only consider the reduced costs of J_2
+        k = np.argmax(
+            aux_c_hat_J_2
+        )
+        # then update k to reflect the actual index in J_2
+        # properly
+        k = list(c_hat_J_2).index(aux_c_hat_J_2[k])
+        c_hat_k = -c_hat_J_2[k]
+
     J_k = J_1 if c_hat_k in c_hat_J_1 else J_2
     proceed = c_hat_k > 0
     return J_k[k], c_hat_k, J_k, proceed
@@ -491,7 +515,7 @@ def _remove_from_lower_bounds_and_add_to_upper_bounds(
         upper_bounds_set: the updated set of indices of the non-basic variables at
             their upper bounds.
     """
-    leaving_variable = lower_bounds_set[k]
+    leaving_variable = k
     lower_bounds_set = list(set(lower_bounds_set) - {leaving_variable})
     upper_bounds_set = list(set(upper_bounds_set) | {leaving_variable})
     return lower_bounds_set, upper_bounds_set
@@ -513,7 +537,7 @@ def _remove_from_upper_bounds_and_add_to_lower_bounds(
         upper_bounds_set: the updated set of indices of the non-basic variables at
             their upper bounds.
     """
-    leaving_variable = upper_bounds_set[k]
+    leaving_variable = k
     upper_bounds_set = list(set(upper_bounds_set) - {leaving_variable})
     lower_bounds_set = list(set(lower_bounds_set) | {leaving_variable})
     return lower_bounds_set, upper_bounds_set
@@ -736,7 +760,10 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 6.1 and then update the sets of non-basic variables at their bounds
     # considering the bound that r leaved to
     if bound == 1: # r leaved to upper bounds
-        J_1, J_2 = _remove_from_lower_bounds_and_add_to_upper_bounds(J_1, J_2, k)
+        # so we should take it from lower (J_1) to upper (J_2) and as it it stored at
+        # J_1[k] we should remove it from J_1 and add it to J_2
+        lower_to_upper = J_1[k]
+        J_1, J_2 = _remove_from_lower_bounds_and_add_to_upper_bounds(J_1, J_2, lower_to_upper)
     # else, r leaved to lower bounds and the previous I_and_J update already
     # took care of the bounds
 
@@ -818,7 +845,10 @@ def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 6.1 and then update the sets of non-basic variables at their bounds
     # considering the bound that r leaved to
     if bound == 0: # r leaved to lower
-        J_1, J_2 = _remove_from_upper_bounds_and_add_to_lower_bounds(J_1, J_2, k)
+        # so we should take it from upper (J_2) to lower (J_1) and as it it stored at
+        # J_2[k] we should remove it from J_2 and add it to J_1
+        from_upper_to_lower = J_2[k]
+        J_1, J_2 = _remove_from_upper_bounds_and_add_to_lower_bounds(J_1, J_2, from_upper_to_lower)
     # else, r leaved to upper bounds and the previous I_and_J update already
     # took care of the bounds
 
