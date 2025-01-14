@@ -756,13 +756,17 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
             S_1, S_2, y_k, A_I_inv
         ) # the lexico-rule will properly select a valid r to leave
     # 6. Now that we have a valid r, we can update the basis
+    J_1_before = J_1.copy()
     I, J_1 = _update_I_and_J(I, J_1, k, r)
     # 6.1 and then update the sets of non-basic variables at their bounds
     # considering the bound that r leaved to
     if bound == 1: # r leaved to upper bounds
-        # so we should take it from lower (J_1) to upper (J_2) and as it it stored at
-        # J_1[k] we should remove it from J_1 and add it to J_2
-        lower_to_upper = J_1[k]
+        # so we should take it from lower (J_1) to upper (J_2) but k ain't no index
+        # as it is the variable itself that entered the basis, so the basic variable
+        # which leaved the basis and should go upper bound can be obtained by the difference
+        # between J_1 and J_1_before sets as after the update, this difference represents
+        # the basic variable that joined the basis
+        lower_to_upper = (set(J_1) - set(J_1_before)).pop()
         J_1, J_2 = _remove_from_lower_bounds_and_add_to_upper_bounds(J_1, J_2, lower_to_upper)
     # else, r leaved to lower bounds and the previous I_and_J update already
     # took care of the bounds
@@ -841,14 +845,18 @@ def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, 
             S_1, S_2, y_k, A_I_inv
         ) # the lexico-rule will properly select a valid r to leave
     # 6. Now that we have a valid r, we can update the basis
+    J_2_before = J_2.copy()
     I, J_2 = _update_I_and_J(I, J_2, k, r)
     # 6.1 and then update the sets of non-basic variables at their bounds
     # considering the bound that r leaved to
     if bound == 0: # r leaved to lower
-        # so we should take it from upper (J_2) to lower (J_1) and as it it stored at
-        # J_2[k] we should remove it from J_2 and add it to J_1
-        from_upper_to_lower = J_2[k]
-        J_1, J_2 = _remove_from_upper_bounds_and_add_to_lower_bounds(J_1, J_2, from_upper_to_lower)
+        # so we should take it from upper (J_2) to lower (J_1) but k ain't no index
+        # as it is the variable itself that entered the basis, so the basic variable
+        # which leaved the basis and should go lower bound can be obtained by the difference
+        # between J_2 and J_2_before sets as after the update, this difference represents
+        # the basic variable that joined the basis
+        upper_to_lower = (set(J_2) - set(J_2_before)).pop()
+        J_1, J_2 = _remove_from_upper_bounds_and_add_to_lower_bounds(J_1, J_2, upper_to_lower)
     # else, r leaved to upper bounds and the previous I_and_J update already
     # took care of the bounds
 
