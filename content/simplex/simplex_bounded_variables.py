@@ -1033,11 +1033,11 @@ def _repr_column_pivot_operations(column_pivot_operations: list, labels : list, 
     for i, pivot_column_multiplier, r in column_pivot_operations:
         if pivot_column_multiplier >= 0:
             column_pivot_operations_list.append(
-                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} - {pivot_column_multiplier:.3f}R_{{{labels[I.index(r) + 1]}}}\\\\)'
+                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} - {pivot_column_multiplier:.3f}R_{{{I[r]}}}\\\\)'
             )
         else:
             column_pivot_operations_list.append(
-                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} + {-pivot_column_multiplier:.3f}R_{{{labels[I.index(r) + 1]}}}\\\\)'
+                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} + {-pivot_column_multiplier:.3f}R_{{{I[r]}}}\\\\)'
             )
     return column_pivot_operations_list
 
