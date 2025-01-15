@@ -950,10 +950,6 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
         solution_found = not proceed
         # 4. build args for the next step
         args = (I, J_1, J_2, k, np.copy(T), lower_bounds, upper_bounds)
-        print(f'Iteration {iterations}')
-        print("I, J_1, J_2, k, T, lower_bounds, upper_bounds")
-        print(args)
-        print()
         # 5. call next step through the pipeline (to avoid computing r and Δ_k
         #    if a solution was found in step 1)
         T, I, J_1, J_2, pivot_operations, proceed = step_functions[
@@ -1003,6 +999,28 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
     x_star[J_2] = upper_bounds[J_2]
     x_star[I_star] = T[1:, -1]
     return z_star, x_star, I_star, solution_type, iterations, tableau_steps
+
+def simplex(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
+    """
+    Solves the linear programming problem using the simplex algorithm for bounded variables.
+    Args:
+        A: the constraint matrix.
+        b: the right-hand side vector.
+        c: the cost vector.
+        I: the set of indices of the basic variables.
+        J_1: the set of indices of the non-basic variables that are at their lower bound.
+        J_2: the set of indices of the non-basic variables that are at their upper bound.
+        lower_bounds: the lower bounds of the variables.
+        upper_bounds: the upper bounds of the variables.
+    Returns:
+        z_star: the optimal value of the objective function.
+        x_star: the optimal values of the variables.
+        I_star: the optimal set of indices of the basic variables.
+        solution_type: the type of the solution.
+        iterations: the number of iterations.
+        tableau_steps: the steps of the simplex algorithm.
+    """
+    return _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds)
 
 def _repr_row_pivot_operations(row_pivot_operations: tuple, I : list) -> str:
     if row_pivot_operations is None:
