@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import linprog
-from simplex_bounded_variables import _simplex_main_loop
+from simplex_bounded_variables import _simplex_main_loop, markdown_repr_T, _markdown_final_step, _markdown_pivot_operations
 
 problems = {
     '5.12': {
@@ -76,9 +76,15 @@ for index in indices:
         locals()[key] = problems[index][key]
     print(f'Problem {index}')
     print('Simplex method')
-    _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds)
+    return_values = _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds)
     print('Scipy method')
     res = linprog(c, A_eq=A, b_eq=b, bounds=scipy_bounds, method='highs')
     print(res)
     print()
     print()
+
+import pyperclip
+steps = return_values[-1]
+iterations = return_values[-2]
+m = markdown_repr_T(steps)
+pyperclip.copy(m)

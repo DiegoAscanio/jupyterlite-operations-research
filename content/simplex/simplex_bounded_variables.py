@@ -5,6 +5,14 @@ import pdb
 
 from utils import lexicographic_negative, lexicographic_positive
 
+_solution_types_map = {
+    1: 'Optimal unique solution',
+    2: 'Optimal multiple solutions',
+    3: 'Unbounded solution',
+    -1: 'Infeasible solution',
+    -2: 'Entered in loop'
+}
+
 def _compute_x_from_x_I(n, x_I, I, J_1, J_2, lower_bounds, upper_bounds) -> np.ndarray:
     x = np.zeros(n)
     x[I] = x_I
@@ -92,7 +100,12 @@ def _find_k_who_enters(
         J_k: the set where the variable k belongs to.
         proceed: whether the algorithm should proceed.
     """
-    c_hat_k = np.float64(0)
+    # initialize c_hat_k
+    c_hat_k = np.max(
+        [np.max(c_hat_J_1), -np.max(c_hat_J_2)]
+    ) if len(c_hat_J_1) > 0 and len(c_hat_J_2) > 0 else np.max(
+        c_hat_J_1
+    ) if len(c_hat_J_1) > 0 else -np.max(c_hat_J_2)
     k = 0 # just to initialize
     # an aux_c_hat_J_1 with -infinities where c_hat_J_1 is leq 0
     aux_c_hat_J_1 = c_hat_J_1[np.where(c_hat_J_1 > 0)]
@@ -647,18 +660,25 @@ def _pivot_tableau(T, r, k):
         k: the index of the variable that enters the basis.
     Returns:
         T: the pivoted tableau.
+        pivot_operations : the pivot operations that were applied to the tableau.
     """
+    pivot_operations = {
+        'divide': None,
+        'subtract': []
+    }
     r = r + 1 # this is needed as the first row of T is the cost row
     pivot_area = T[:, :-1]
     m, _ = pivot_area.shape
     pivot_element = pivot_area[r, k]
     # divide the pivot row by the pivot element
     pivot_area[r, :] = pivot_area[r, :] / pivot_element
+    pivot_operations['divide'] = (r - 1, pivot_element)
     # apply linear combination to the other rows
     rows = list(range(r)) + list(range(r + 1, m))
     for row in rows:
+        pivot_operations['subtract'].append((row, pivot_area[row, k], r - 1))
         pivot_area[row,:] -= pivot_area[row,k] * pivot_area[r, :]
-    return T
+    return T, pivot_operations
 
 
 def _simplex_step_1(
@@ -666,7 +686,7 @@ def _simplex_step_1(
     I : list,
     J_1 : list,
     J_2 : list
-) -> Tuple[np.intp, np.float64, list, np.bool_]:
+) -> Tuple[np.intp | None, np.float64, list, np.bool_]:
     """
     Executes the first step of the simplex algorithm for bounded variables.
     Args:
@@ -686,7 +706,8 @@ def _simplex_step_1(
         c_hat_J_1, c_hat_J_2, J_1, J_2
     )
 
-    return k, c_hat_k, k_set, proceed
+    return (k, c_hat_k, k_set, proceed) if proceed else\
+           (None, c_hat_k, k_set, proceed)
 
 pipeline_memory = {
 }
@@ -717,7 +738,7 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 2. early return if Δ_k is infinite and then stop the algorithm
     #    as the problem is unbounded
     if not proceed:
-        return T, I, J_1, J_2, False
+        return T, I, J_1, J_2, {'divide': None, 'subtract': []}, False
 
     # 3. update variables that will hold this value till the end of the iteration
     x_k = lower_bounds[k] + Δ_k
@@ -733,7 +754,7 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
         # remove k from lower_bounds and add it to upper_bounds
         J_1, J_2 = _remove_from_lower_bounds_and_add_to_upper_bounds(J_1, J_2, k)
         # return the updated tableau
-        return T, I, J_1, J_2, True
+        return T, I, J_1, J_2, {'divide': None, 'subtract': []}, True
 
     # 4. check if candidates r and k produces a strongly feasible partition
     candidate_I = I.copy()
@@ -777,17 +798,17 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 8. update the tableau with the new values of b_hat
     T[1:, -1] = b_hat
     # 9. pivot the tableau at the k-th column and r-th row
-    T = _pivot_tableau(T, r, k)
+    T, pivot_operations = _pivot_tableau(T, r, k)
     # return the updated tableau
-    return T, I, J_1, J_2, True
+    return T, I, J_1, J_2, pivot_operations, True
 
 
 def _simplex_step_2_pipeline(proceed, *args, **kwargs):
     if proceed:
-        T, I, J_1, J_2, proceed = _simplex_step_2_k_enters_from_lower_bounds(*args, **kwargs)
+        T, I, J_1, J_2, pivot_operations, proceed = _simplex_step_2_k_enters_from_lower_bounds(*args, **kwargs)
         _store_at_pipeline_memory(T, I, J_1, J_2)
-        return T, I, J_1, J_2, proceed
-    return *_retrieve_from_pipeline_memory(), False
+        return T, I, J_1, J_2, pivot_operations, proceed
+    return *_retrieve_from_pipeline_memory(), {'divide': None, 'subtract': []}, False
 
 def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, upper_bounds):
     # necessary variables
@@ -806,7 +827,7 @@ def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 2. early return if Δ_k is infinite and then stop the algorithm
     #    as the problem is unbounded
     if not proceed:
-        return T, I, J_1, J_2, False
+        return T, I, J_1, J_2, {'divide': None, 'subtract': []}, False
 
     # 3. update variables that will hold this value till the end of the iteration
     x_k = upper_bounds[k] - Δ_k
@@ -822,7 +843,7 @@ def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, 
         # remove k from upper_bounds and add it to lower_bounds
         J_1, J_2 = _remove_from_upper_bounds_and_add_to_lower_bounds(J_1, J_2, k)
         # return the updated tableau
-        return T, I, J_1, J_2, True
+        return T, I, J_1, J_2, {'divide': None, 'subtract': []}, False
 
     # 4. check if candidates r and k produces a strongly feasible partition
     candidate_I = I.copy()
@@ -866,18 +887,20 @@ def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, 
     # 8. update the tableau with the new values of b_hat
     T[1:, -1] = b_hat
     # 9. pivot the tableau at the k-th column and r-th row
-    T = _pivot_tableau(T, r, k)
+    T, pivot_operations = _pivot_tableau(T, r, k)
     # return the updated tableau
-    return T, I, J_1, J_2, True
+    return T, I, J_1, J_2, pivot_operations, True
 
 def _simplex_step_3_pipeline(proceed, *args, **kwargs):
     if proceed:
-        T, I, J_1, J_2, proceed = _simplex_step_3_k_enters_from_upper_bounds(*args, **kwargs)
+        T, I, J_1, J_2, pivot_operations, proceed = _simplex_step_3_k_enters_from_upper_bounds(*args, **kwargs)
         _store_at_pipeline_memory(T, I, J_1, J_2)
-        return T, I, J_1, J_2, proceed
-    return *_retrieve_from_pipeline_memory(), False
+        return T, I, J_1, J_2, pivot_operations, proceed
+    return *_retrieve_from_pipeline_memory(), {'divide': None, 'subtract': []}, False
 
 def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
+    tableau_steps = {}
+
     _, n = A.shape
     T = _build_initial_tableau(
         A, b, c, I, J_1, J_2, lower_bounds, upper_bounds
@@ -891,6 +914,27 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
     optimal = False
     unbouded = False
     iterations = 0
+
+    tableau_steps[iterations] = {
+        'previous_T': np.copy(T),
+        'T': np.copy(T),
+        'previous_I': deepcopy(I),
+        'previous_J_1': deepcopy(J_1),
+        'previous_J_2': deepcopy(J_2),
+        'I': deepcopy(I),
+        'J_1': deepcopy(J_1),
+        'J_2': deepcopy(J_2),
+        'to_enter': None,
+        'to_leave': None,
+        'c_hat_J_1': None,
+        'c_hat_J_2': None,
+        'c_hat_k': None,
+        'pivot_operations': {
+            'divide': None,
+            'subtract': []
+        }
+    }
+
     while not solution_found:
         # 1. rebuild the step functions map to reflect changes made at the non-basic
         # variables set on previous iterations
@@ -905,14 +949,14 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
         # 3. update solution_found flag
         solution_found = not proceed
         # 4. build args for the next step
-        args = (I, J_1, J_2, k, T, lower_bounds, upper_bounds)
+        args = (I, J_1, J_2, k, np.copy(T), lower_bounds, upper_bounds)
         print(f'Iteration {iterations}')
         print("I, J_1, J_2, k, T, lower_bounds, upper_bounds")
         print(args)
         print()
         # 5. call next step through the pipeline (to avoid computing r and Δ_k
         #    if a solution was found in step 1)
-        T, I, J_1, J_2, proceed = step_functions[
+        T, I, J_1, J_2, pivot_operations, proceed = step_functions[
             tuple(k_set)
         ](proceed, *args)
         # 5.1 set unbounded flag if unbounded solution was found
@@ -921,17 +965,183 @@ def _simplex_main_loop(A, b, c, I, J_1, J_2, lower_bounds, upper_bounds):
         solution_found = not proceed
         # 7. update iterations counter
         iterations += 1
-    # 7. evaluate solution found
+        # 8. store tableau at the steps dictionary
+        tableau_steps[iterations] = {
+            'previous_T': np.copy(tableau_steps[iterations - 1]['T']),
+            'T': np.copy(T),
+            'previous_I': deepcopy(tableau_steps[iterations - 1]['I']),
+            'previous_J_1': deepcopy(tableau_steps[iterations - 1]['J_1']),
+            'previous_J_2': deepcopy(tableau_steps[iterations - 1]['J_2']),
+            'I': deepcopy(I),
+            'J_1': deepcopy(J_1),
+            'J_2': deepcopy(J_2),
+            'to_enter': k,
+            'to_leave': next(iter(set(tableau_steps[iterations - 1]['I']) - set(I)), None),
+            'c_hat_J_1': np.copy(T[0, J_1]),
+            'c_hat_J_2': np.copy(T[0, J_2]),
+            'c_hat_k': c_hat_k,
+            'pivot_operations': pivot_operations
+        }
+    # 9. evaluate solution found
     solution_type = None
     if optimal:
         solution_type = 1 if c_hat_k != 0 else 2
     elif unbouded:
         solution_type = 3
-    # 8. return final values
+    # 10. Add necessary data to the final step
+    tableau_steps[iterations]['C'] = c
+    tableau_steps[iterations]['B'] = b
+    tableau_steps[iterations]['A'] = A
+    tableau_steps[iterations]['solution_type'] = solution_type
+    tableau_steps[iterations]['lower_bounds'] = lower_bounds
+    tableau_steps[iterations]['upper_bounds'] = upper_bounds
+    # 11. return final values
     I_star = I
     z_star = T[0, -1]
     x_star = np.zeros(n)
     x_star[J_1] = lower_bounds[J_1]
     x_star[J_2] = upper_bounds[J_2]
     x_star[I_star] = T[1:, -1]
-    return z_star, x_star, I_star, solution_type, iterations
+    return z_star, x_star, I_star, solution_type, iterations, tableau_steps
+
+def _repr_row_pivot_operations(row_pivot_operations: tuple, I : list) -> str:
+    if row_pivot_operations is None:
+        return ''
+    r, pivot_row_multiplier = row_pivot_operations
+    return f'\\\\(R_{{X_{{{I[r]}}}}} \\leftarrow \\frac{{R_{{X_{{{I[r]}}}}}}}{{{pivot_row_multiplier:.3f}}}\\\\)'
+
+def _repr_column_pivot_operations(column_pivot_operations: list, labels : list, I : list) -> list:
+    column_pivot_operations_list = []
+    for i, pivot_column_multiplier, r in column_pivot_operations:
+        if pivot_column_multiplier >= 0:
+            column_pivot_operations_list.append(
+                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} - {pivot_column_multiplier:.3f}R_{{{labels[I.index(r) + 1]}}}\\\\)'
+            )
+        else:
+            column_pivot_operations_list.append(
+                    f'\\\\(R_{{{labels[i]}}} \\leftarrow R_{{{labels[i]}}} + {-pivot_column_multiplier:.3f}R_{{{labels[I.index(r) + 1]}}}\\\\)'
+            )
+    return column_pivot_operations_list
+
+def _markdown_pivot_operations(to_enter, to_leave, I: list, pivot_operations: dict) -> str:
+    labels = ['\\text{{Cost}}'] + [
+        f'X_{{{i}}}' for i in I
+    ]
+    pivot_operations_str  = '### Pivot Operations\n\n'
+    pivot_operations_str += 'Variable to enter: \\\\(' + (str(to_enter) or '') + '\\\\)\n'
+    pivot_operations_str += 'Variable to leave: \\\\(' + (str(to_leave) or '') + '\\\\)\n'
+    pivot_operations_str += '#### Row Operations:\n\n'
+    pivot_operations_str += '1. ' + _repr_row_pivot_operations(pivot_operations['divide'],  I) + '\n'
+    for i, column_pivot_operation in enumerate(_repr_column_pivot_operations(pivot_operations['subtract'], labels, I)):
+        pivot_operations_str += f'{i + 1}. {column_pivot_operation}\n'
+    return pivot_operations_str
+
+def _markdown_T(T: np.ndarray, I: list) -> str:
+    table_header = '|   |' + ' | '.join([f'\\\\(X_{{{i}}}\\\\)' for i in range(T.shape[1] - 1)]) + ' | RHS |\n'
+    table_header += '|---|' + '---|' * (T.shape[1] - 1) + '---|\n'
+
+    row_names = ['Cost'] + [f'\\\\(X_{{{i}}}\\\\)' for i in I]
+
+    table_body = ''
+    for i, row in enumerate(T):
+        table_body += f'| {row_names[i]} | ' + ' | '.join([f'{value:.3f}' for value in row]) + ' |\n'
+
+    return table_header + table_body
+
+def _repr_arr_tex(bounds) -> str:
+    _bounds = []
+    # replace all np.inf in bounds for '∞'
+    for bound in bounds:
+        if bound == np.inf:
+            _bounds.append('∞')
+        elif bound == -np.inf:
+            _bounds.append('-∞')
+        else:
+            _bounds.append(f'{bound:.2f}')
+    return '[ ' + ',\\ '.join(_bounds) + ' ]'
+
+def _markdown_final_step(last_step : dict, iteration) -> str:
+    solution_type = _solution_types_map[last_step['solution_type']]
+    n = len(last_step['C'])
+    I_star = last_step['I']
+    J_1 = last_step['J_1']
+    J_2 = last_step['J_2']
+    c_hat_J_1 = last_step['c_hat_J_1']
+    c_hat_J_2 = last_step['c_hat_J_2']
+    z_star = last_step['T'][0, -1]
+    x_star = np.zeros(n)
+    x_star[J_1] = last_step['lower_bounds'][J_1]
+    x_star[J_2] = last_step['upper_bounds'][J_2]
+    x_star[I_star] = last_step['T'][1:, -1]
+
+
+    A = last_step['A']
+    B = last_step['B']
+    C = last_step['C']
+    restrictions_matrix_latex_format = '\\begin{bmatrix}\n'
+    for i, row in enumerate(A):
+        restrictions_matrix_latex_format += ' & '.join([f'{value:.3f}' for value in row]) + ' \\\\\n'
+    restrictions_matrix_latex_format += '\\end{bmatrix}'
+    c_latex_format = '\\begin{bmatrix}\n' + ' & '.join([f'{value:.3f}' for value in C]) + '\n\\end{bmatrix}'
+    b_latex_format = '\\begin{bmatrix}\n' + '\\\\\n'.join([f'{value:.3f}' for value in B]) + '\n\\end{bmatrix}'
+    x_matrix_latex_format = '\\begin{bmatrix}\n' + '\\\\\n'.join([f'X_{{{i}}}' for i, _ in enumerate(C)]) + '\n\\end{bmatrix}'
+
+    statement = f'''\\\\[
+    \\begin{{aligned}}
+    & \\text{{Minimize}} & C^{{T}} \\cdot X \\\\
+    & \\text{{Subject to}} & A \\cdot X & = B \\\\
+    & & L \\leq  X  \\leq U &
+    \\end{{aligned}}
+    \\\\]
+    where: 
+    \\\\[
+    \\begin{{aligned}}
+    & & A = {restrictions_matrix_latex_format} \\\\
+    & & B = {b_latex_format} \\\\
+    & & C^{{T}} = {c_latex_format} \\\\
+    & & X = {x_matrix_latex_format} \\\\
+    & & L = {_repr_arr_tex(last_step['lower_bounds'])} \\\\
+    & & U = {_repr_arr_tex(last_step['upper_bounds'])}
+    \\end{{aligned}}
+    \\\\]\n\n'''
+    markdown  = f'\n\n## Solution for \n\n'
+    markdown += statement
+    markdown += f'Solution Type: {solution_type}\n\n'
+    markdown += f'Optimal Solution: \\\\(X^{{*}} = {_repr_arr_tex(x_star)}\\\\)\n\n'
+    markdown += f'Optimal Value: \\\\(Z^{{*}} = {z_star:.2f}\\\\)\n\n'
+    markdown += f'Optimal Basis: \\\\({I_star}\\\\)\n\n'
+    markdown += f'Final non-basic variables set at lower bounds \\\\(J_1\\\\): \\\\({J_1}\\\\)\n\n'
+    markdown += f'Final non-basic variables set at upper bounds \\\\(J_2\\\\): \\\\({J_2}\\\\)\n\n'
+    markdown += f'\\\\(\\hat{{C}}_{{J_1}}\\\\): \\\\({c_hat_J_1.tolist()}\\\\)\n\n'
+    markdown += f'\\\\(\\hat{{C}}_{{J_2}}\\\\): \\\\({c_hat_J_2.tolist()}\\\\)\n\n'
+    markdown += f'Number of Iterations: {iteration + 1}\n\n'
+
+    return markdown
+
+def markdown_repr_T(tableau_steps) -> str:
+    markdown = ''
+    for iteration in tableau_steps:
+        # skip first iteration
+        if iteration == 0:
+            continue
+        markdown += f'\n\n## Iteration {iteration}\n\n'
+        markdown += 'Previous Tableau:\n\n'
+        markdown += _markdown_T(
+            tableau_steps[iteration]['previous_T'],
+            tableau_steps[iteration]['previous_I']
+        )
+        markdown += _markdown_pivot_operations(
+            tableau_steps[iteration]['to_enter'],
+            tableau_steps[iteration]['to_leave'],
+            tableau_steps[iteration]['previous_I'],
+            tableau_steps[iteration]['pivot_operations']
+        )
+        markdown += '\n\nComputed Tableau:\n\n'
+        markdown += _markdown_T(
+            tableau_steps[iteration]['T'],
+            tableau_steps[iteration]['I']
+        )
+        markdown += '\n\n\\\\(J_1\\\\) (lower bounds variables): ' + str(tableau_steps[iteration]['J_1']) + '\n'
+        markdown += '\n\n\\\\(J_2\\\\) (upper bounds variables): ' + str(tableau_steps[iteration]['J_2']) + '\n\n'
+    markdown += _markdown_final_step(tableau_steps[iteration], iteration)
+    return markdown
