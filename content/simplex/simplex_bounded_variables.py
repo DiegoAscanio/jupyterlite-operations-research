@@ -375,7 +375,6 @@ def _basic_variables_degenerate_at_their_lower_bounds(
         np.isclose(basic_variables_values, lower_bounds[I])
     )
     return list(degenerate_in_lower_bounds_indices)
-_build_s_1_set = _basic_variables_degenerate_at_their_lower_bounds
 
 def _basic_variables_degenerate_at_their_upper_bounds(
     I : list,
@@ -401,7 +400,110 @@ def _basic_variables_degenerate_at_their_upper_bounds(
         np.isclose(basic_variables_values, upper_bounds[I])
     )
     return list(degenerate_in_upper_bounds_indices)
-_build_s_2_set = _basic_variables_degenerate_at_their_upper_bounds
+
+def _build_s_1_set_x_k_enters_from_lower_bounds(
+    I : list,
+    A : np.ndarray,
+    b : np.ndarray,
+    upper_bounds : np.ndarray,
+    y_k : np.ndarray
+) -> list:
+    '''
+        S_1 is the set of basic variables indices i for which y_ik < 0
+        and that are at their upper bounds
+        Args:
+            I : basic variables set
+            A : constraints matrix
+            B : right-side matrix
+            upper_bounds : upper_bounds for variables
+            y_k : y_k vector
+        Returns:
+            S_1 : list of basic variables i that are at their upper bound where y_ik < 0
+    '''
+    degenerate_at_upper_bounds = _basic_variables_degenerate_at_their_upper_bounds(I, A, b, upper_bounds)
+    s_1 = []
+    for d in degenerate_at_upper_bounds:
+        if y_k[d] < 0:
+            s_1.append(d)
+    return s_1
+
+def _build_s_2_set_x_k_enters_from_lower_bounds(
+    I : list,
+    A : np.ndarray,
+    b : np.ndarray,
+    lower_bounds : np.ndarray,
+    y_k : np.ndarray
+) -> list:
+    '''
+        S_2 is the set of basic variables indices i for which y_ik < 0
+        and that are at their lower bounds
+        Args:
+            I : basic variables set
+            A : constraints matrix
+            B : right-side matrix
+            lower_bounds : lower_bounds for variables
+            y_k : y_k vector
+        Returns:
+            S_2 : list of basic variables i that are at their lower bounds where y_ik > 0
+    '''
+    degenerate_at_lower_bounds = _basic_variables_degenerate_at_their_lower_bounds(I, A, b, lower_bounds)
+    s_2 = []
+    for d in degenerate_at_lower_bounds:
+        if y_k[d] > 0:
+            s_2.append(d)
+    return s_2
+
+def _build_s_1_set_x_k_enters_from_upper_bounds(
+    I : list,
+    A : np.ndarray,
+    b : np.ndarray,
+    lower_bounds : np.ndarray,
+    y_k : np.ndarray
+) -> list:
+    '''
+        S_1 is the set of basic variables indices i for which y_ik < 0
+        and that are at their lower bounds
+        Args:
+            I : basic variables set
+            A : constraints matrix
+            B : right-side matrix
+            lower_bounds : lower_bounds for variables
+            y_k : y_k vector
+        Returns:
+            S_1 : list of basic variables i that are at their lower bounds where y_ik < 0
+    '''
+    degenerate_at_lower_bounds = _basic_variables_degenerate_at_their_lower_bounds(I, A, b, lower_bounds)
+    s_1 = []
+    for d in degenerate_at_lower_bounds:
+        if y_ki[d] < 0:
+            s_1.append(d)
+    return s_1
+
+def _build_s_2_set_x_k_enters_from_upper_bounds(
+    I : list,
+    A : np.ndarray,
+    b : np.ndarray,
+    upper_bounds : np.ndarray,
+    y_k : np.ndarray
+) -> list:
+    '''
+        S_2 is the set of basic variables indices i for which y_ik > 0
+        and that are at their upper bounds
+        Args:
+            I : basic variables set
+            A : constraints matrix
+            B : right-side matrix
+            upper_bounds : upper_bounds for variables
+            y_k : y_k vector
+        Returns:
+            S_2 : list of basic variables i that are at their upper bounds where y_ik > 0
+    '''
+    degenerate_at_upper_bounds = _basic_variables_degenerate_at_their_upper_bounds(I, A, b, upper_bounds)
+    s_2 = []
+    for d in degenerate_at_upper_bounds:
+        if y_ki > 0:
+            s_2.append(d)
+    return s_2
 
 def _is_strongly_feasible(
     A: np.ndarray,
@@ -451,23 +553,20 @@ def _is_strongly_feasible(
             )
         ), True
     )
-
     return strongly_feasible
 
 def _find_r_to_leave_for_k_entering_from_lower_bound_cycle_proof(
     S_1 : list,
     S_2 : list,
+    I : list,
     y_k : np.ndarray,
     A_I_inv : np.ndarray
 ) -> int | None:
     degenerate_basic_variables = list(set(S_1) | set(S_2))
     # we need to handle it as list to sort appropriately
-    r_candidates_to_leave: list = list(
-        map(
-            lambda x: tuple(x),
-            A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
-        )
-    )
+    r_candidates_to_leave = [
+        tuple(A_I_inv [d, :] / y_k[d]) for d in degenerate_basic_variables
+    ]
 
     # we make a copy of r_candidates_to_leave - a list of tuples
     lexicographic_rule = r_candidates_to_leave.copy()
@@ -480,8 +579,12 @@ def _find_r_to_leave_for_k_entering_from_lower_bound_cycle_proof(
 
     # the index is the index of r_candidates_to_leave that contains the minimum
     # row
-    return r_candidates_to_leave.index(lexicographically_minimum_row)
-
+    # now we find the row in A_I_inv that contains the lexicographically minimum
+    A_I_inv_aux = np.copy(A_I_inv)
+    for d in degenerate_basic_variables:
+        A_I_inv_aux [d, :] = A_I_inv_aux [d, :] / y_k[d]
+    r_index = np.where(A_I_inv_aux == lexicographically_minimum_row)[0]
+    return r_index
 def _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
     S_1 : list,
     S_2 : list,
@@ -490,12 +593,9 @@ def _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
 ) -> int | None:
     degenerate_basic_variables = list(set(S_1) | set(S_2))
     # we need to handle it as list to sort appropriately
-    r_candidates_to_leave: list = list(
-        map(
-            lambda x: tuple(x),
-            A_I_inv [degenerate_basic_variables, :] / y_k[degenerate_basic_variables]
-        )
-    )
+    r_candidates_to_leave = [
+        tuple(A_I_inv [d, :] / y_k[d]) for d in degenerate_basic_variables
+    ]
 
     # we make a copy of r_candidates_to_leave - a list of tuples
     lexicographic_rule = r_candidates_to_leave.copy()
@@ -506,9 +606,14 @@ def _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
     # so the last element of lexicographic_rule is the one we're interested at
     lexicographically_maximum_row = lexicographic_rule[-1]
 
-    # the index is the index of r_candidates_to_leave that contains the minimum
+    # the index is the index of r_candidates_to_leave that contains the maximum
     # row
-    return r_candidates_to_leave.index(lexicographically_maximum_row)
+    # now we find the row in A_I_inv that contains the lexicographically minimum
+    A_I_inv_aux = np.copy(A_I_inv)
+    for d in degenerate_basic_variables:
+        A_I_inv_aux [d, :] = A_I_inv_aux [d, :] / y_k[d]
+    r_index = np.where(A_I_inv_aux == lexicographically_maximum_row)[0]
+    return r_index
 
 def _remove_from_lower_bounds_and_add_to_upper_bounds(
     lower_bounds_set: list, upper_bounds_set: list, k: np.intp
@@ -771,10 +876,10 @@ def _simplex_step_2_k_enters_from_lower_bounds(I, J_1, J_2, k, T, lower_bounds, 
         upper_bounds,
         candidate_I
         ):
-        S_1 = _build_s_1_set(candidate_I, A, b, lower_bounds)
-        S_2 = _build_s_2_set(candidate_I, A, b, upper_bounds)
+        S_1 = _build_s_1_set_x_k_enters_from_lower_bounds(candidate_I, A, b, lower_bounds, y_k)
+        S_2 = _build_s_2_set_x_k_enters_from_lower_bounds(candidate_I, A, b, upper_bounds, y_k)
         r = _find_r_to_leave_for_k_entering_from_lower_bound_cycle_proof(
-            S_1, S_2, y_k, A_I_inv
+            S_1, S_2, I, y_k, A_I_inv
         ) # the lexico-rule will properly select a valid r to leave
     # 6. Now that we have a valid r, we can update the basis
     J_1_before = J_1.copy()
@@ -860,8 +965,8 @@ def _simplex_step_3_k_enters_from_upper_bounds(I, J_1, J_2, k, T, lower_bounds, 
         upper_bounds,
         candidate_I
         ):
-        S_1 = _build_s_1_set(candidate_I, A, b, lower_bounds)
-        S_2 = _build_s_2_set(candidate_I, A, b, upper_bounds)
+        S_1 = _build_s_1_set_x_k_enters_from_upper_bounds(candidate_I, A, b, lower_bounds, y_k)
+        S_2 = _build_s_1_set_x_k_enters_from_upper_bounds(candidate_I, A, b, upper_bounds, y_k)
         r = _find_r_to_leave_for_k_entering_from_upper_bound_cycle_proof(
             S_1, S_2, y_k, A_I_inv
         ) # the lexico-rule will properly select a valid r to leave
