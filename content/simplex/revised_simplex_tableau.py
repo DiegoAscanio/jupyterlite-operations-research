@@ -95,7 +95,7 @@ def _find_r_to_leave_cycle_proof(
     while not singleton:
         c = next(columns)
         y_c = A_I_inv @ A[:, c]
-        aux_ratios = np.where(y_k > 0, y_c / y_k, np.inf)
+        aux_ratios = np.round(np.where(y_k > 0, y_c / y_k, np.inf), 6)
         minimum_value = np.min(aux_ratios)
         minimum_values_indices, *_ = np.where(aux_ratios == minimum_value)
         singleton = len(minimum_values_indices) == 1
