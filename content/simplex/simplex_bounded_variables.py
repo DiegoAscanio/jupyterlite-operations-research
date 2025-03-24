@@ -487,7 +487,7 @@ def _build_s_1_set_x_k_enters_from_upper_bounds(
     degenerate_at_lower_bounds = _basic_variables_degenerate_at_their_lower_bounds(I, A, b, lower_bounds)
     s_1 = []
     for d in degenerate_at_lower_bounds:
-        if y_ki[d] < 0:
+        if y_k[d] < 0:
             s_1.append(d)
     return s_1
 
@@ -516,7 +516,7 @@ def _build_s_2_set_x_k_enters_from_upper_bounds(
     degenerate_at_upper_bounds = _basic_variables_degenerate_at_their_upper_bounds(I, A, b, upper_bounds)
     s_2 = []
     for d in degenerate_at_upper_bounds:
-        if y_ki > 0:
+        if y_k[d] > 0:
             s_2.append(d)
     return s_2
 
