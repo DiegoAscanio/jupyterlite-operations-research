@@ -3,8 +3,6 @@ from simplex_two_phases import simplex
 from copy import deepcopy
 import pdb
 
-import numpy as np
-
 try:
     from graphviz import Digraph
 except ImportError:

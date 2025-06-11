@@ -1,12 +1,6 @@
 {
     "jupyter-lite-schema-version": 0,
     "jupyter-config-data": {
-        "federated_extensions": [
-            {
-                "extension": "@anywidget/widget",
-                "load": true
-            }
-        ],
         "disabledExtensions": [
             "@jupyterlab/drawio-extension",
             "jupyterlab-kernel-spy",
