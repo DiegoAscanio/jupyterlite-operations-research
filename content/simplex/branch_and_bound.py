@@ -3,8 +3,56 @@ from simplex_two_phases import simplex
 from copy import deepcopy
 import pdb
 
-from graphviz import Digraph
 import numpy as np
+
+try:
+    from graphviz import Digraph
+except ImportError:
+    class Digraph:
+        def __init__(self, comment=''):
+            self.comment = comment
+            self.nodes = []
+            self.edges = []
+
+        def node(self, name, label, shape='box'):
+            self.nodes.append((name, label, shape))
+
+        def edge(self, from_node, to_node, label=''):
+            self.edges.append((from_node, to_node, label))
+
+        def render(self):
+            return "Graph rendering not implemented for this mock class."
+
+def generate_dot(node):
+    lines = ["digraph G {", "node [shape=box];"]
+
+    def recurse(n):
+        if n is None:
+            return
+        name = f"N{n['name']}"
+        z_inf = n.get("z_inf", "None")
+        x = n.get("x", None)
+        x_str = str(np.round(x, 2)) if x is not None else "N/A"
+        label = f"{name}\\nP: {n['P']['name']}\\nz_inf: {z_inf}\\nx: {x_str}"
+        lines.append(f'"{name}" [label="{label}"];')
+
+        if 'left' in n and n['left']:
+            left_name = f"N{n['left']['name']}"
+            var = n.get("branch_variable", "?")
+            bound = n.get("lower_bound", "?")
+            lines.append(f'"{name}" -> "{left_name}" [label="x_{var} <= {bound}"];')
+            recurse(n['left'])
+
+        if 'right' in n and n['right']:
+            right_name = f"N{n['right']['name']}"
+            var = n.get("branch_variable", "?")
+            bound = n.get("upper_bound", "?")
+            lines.append(f'"{name}" -> "{right_name}" [label="x_{var} >= {bound}"];')
+            recurse(n['right'])
+
+    recurse(node)
+    lines.append("}")
+    return "\n".join(lines)
 
 def draw_bnb_tree(node, graph=None):
     if graph is None:
