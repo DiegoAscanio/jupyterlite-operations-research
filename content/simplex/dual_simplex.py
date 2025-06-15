@@ -190,6 +190,8 @@ def _dual_feasible_basis(
     # and update the basis
     I, J = _update_I_and_J(I, J, k, r)
 
+    return A_aux, b_aux, c_aux, I, J
+
 def _tableau (A: np.ndarray, b: np.ndarray, c: np.ndarray, I: list, J: list, π : np.ndarray) -> np.ndarray:
     """
     Builds the tableau for the simplex method.
@@ -247,7 +249,7 @@ def dual_simplex(A, b, c, I):
         w_star: the optimal dual solution,
         I_star: optimal basis indices,
         iters: number of iterations
-        type: 1 - optimal finite solution found,
+        solution_type: 1 - optimal finite solution found,
               2 - multiple optimal solutions found,
               3 - primal infeasible, dual unbounded.
         steps: a dictionary with information for each step
